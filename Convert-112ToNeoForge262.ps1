@@ -1208,6 +1208,7 @@ public class LegacyBlock112 extends Block {
     private boolean legacyNoCollision;
     private boolean legacyCutout;
     private int legacyLight = 0;
+    private VoxelShape legacyShape = null;
 
     public LegacyBlock112(Material material) {
         super(LegacyProps.fromMaterial(material));
@@ -1247,6 +1248,27 @@ public class LegacyBlock112 extends Block {
 
     public boolean isLegacyCutout() {
         return legacyCutout;
+    }
+
+    /** Stage E: 1.12 AxisAlignedBB (0..1) → VoxelShape. */
+    public void setLegacyShape(double x1, double y1, double z1, double x2, double y2, double z2) {
+        double minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+        double minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+        double minZ = Math.min(z1, z2), maxZ = Math.max(z1, z2);
+        minX = clamp01(minX); maxX = clamp01(maxX);
+        minY = clamp01(minY); maxY = clamp01(maxY);
+        minZ = clamp01(minZ); maxZ = clamp01(maxZ);
+        if (maxX - minX < 1.0e-6 || maxY - minY < 1.0e-6 || maxZ - minZ < 1.0e-6) {
+            this.legacyShape = Shapes.empty();
+        } else {
+            this.legacyShape = Shapes.box(minX, minY, minZ, maxX, maxY, maxZ);
+        }
+    }
+
+    private static double clamp01(double v) {
+        if (v < 0) return 0;
+        if (v > 1) return 1;
+        return v;
     }
 
     /** setUnlocalizedName */
@@ -1310,13 +1332,57 @@ public class LegacyBlock112 extends Block {
 
     @Override
     protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        return legacyNoCollision ? Shapes.empty() : super.getCollisionShape(state, level, pos, context);
+        if (legacyNoCollision) return Shapes.empty();
+        if (legacyShape != null) return legacyShape;
+        return super.getCollisionShape(state, level, pos, context);
     }
 
     @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        if (legacyShape != null) return legacyShape;
         // Keep a selectable outline even when collision is empty (signs/decor).
         return legacyNoCollision ? Shapes.block() : super.getShape(state, level, pos, context);
+    }
+
+    /**
+     * Stage E: bridge modern neighbor updates to 1.12-style {@code func_189540_a} if present.
+     */
+    @Override
+    protected void neighborChanged(BlockState state, net.minecraft.world.level.Level level, BlockPos pos, Block neighborBlock,
+                                   net.minecraft.world.level.redstone.Orientation orientation,
+                                   boolean movedByPiston) {
+        try {
+            java.lang.reflect.Method m = this.getClass().getMethod(
+                    "func_189540_a", BlockState.class, net.minecraft.world.level.Level.class, BlockPos.class, Block.class, BlockPos.class);
+            m.invoke(this, state, level, pos, neighborBlock, pos);
+            return;
+        } catch (ReflectiveOperationException ignored) {
+            /* no legacy neighbor method */
+        }
+        super.neighborChanged(state, level, pos, neighborBlock, orientation, movedByPiston);
+    }
+
+    /**
+     * Stage E: bridge modern use to 1.12 {@code func_180639_a} if present.
+     */
+    @Override
+    protected net.minecraft.world.InteractionResult useWithoutItem(
+            BlockState state, net.minecraft.world.level.Level level, BlockPos pos,
+            net.minecraft.world.entity.player.Player player, net.minecraft.world.phys.BlockHitResult hitResult) {
+        try {
+            java.lang.reflect.Method m = this.getClass().getMethod(
+                    "func_180639_a",
+                    net.minecraft.world.level.Level.class, BlockPos.class, BlockState.class,
+                    net.minecraft.world.entity.player.Player.class, EnumHand.class, EnumFacing.class,
+                    float.class, float.class, float.class);
+            Object r = m.invoke(this, level, pos, state, player, EnumHand.MAIN_HAND, EnumFacing.NORTH, 0f, 0f, 0f);
+            if (r instanceof Boolean b && b) {
+                return net.minecraft.world.InteractionResult.SUCCESS;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            /* no legacy use method */
+        }
+        return super.useWithoutItem(state, level, pos, player, hitResult);
     }
 
     @Override
@@ -1899,6 +1965,231 @@ private void addCreative(final BuildCreativeModeTabContentsEvent event) {
     return $touched
 }
 
+function Invoke-112StageEPlusPass {
+    param(
+        [string]$Root,
+        [string]$ModId = 'examplemod'
+    )
+    $touched = 0
+    $nl = [Environment]::NewLine
+    $javaRoot = Join-Path $Root 'src\main\java'
+    $assetsRoot = Join-Path $Root 'src\main\resources\assets'
+    $dataRoot = Join-Path $Root 'src\main\resources\data'
+    $blockNames = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+
+    # ---------- Java: shapes + redstone method renames ----------
+    if (Test-Path $javaRoot) {
+        $files = Get-ChildItem $javaRoot -Recurse -Filter '*.java' -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '[\\/]rb[\\/]converter[\\/]stub112[\\/]' }
+        foreach ($f in $files) {
+            $t = [System.IO.File]::ReadAllText($f.FullName)
+            $o = $t
+
+            # Collect registry names for loot/tags
+            [regex]::Matches($t, 'setRegistryName\(\s*"([^"]+)"\s*\)') | ForEach-Object {
+                [void]$blockNames.Add($_.Groups[1].Value)
+            }
+
+            # Inject setLegacyShape from simple bounding-box returns (func_185496_a etc.)
+            $shapeMatch = [regex]::Match($t, 'return\s+new\s+AxisAlignedBB\s*\(\s*([0-9eE.+-]+)\s*,\s*([0-9eE.+-]+)\s*,\s*([0-9eE.+-]+)\s*,\s*([0-9eE.+-]+)\s*,\s*([0-9eE.+-]+)\s*,\s*([0-9eE.+-]+)\s*\)\s*;')
+            if ($shapeMatch.Success -and $t -match 'setRegistryName' -and $t -notmatch 'setLegacyShape\s*\(') {
+                $a = $shapeMatch.Groups[1].Value; $b = $shapeMatch.Groups[2].Value; $c = $shapeMatch.Groups[3].Value
+                $d = $shapeMatch.Groups[4].Value; $e = $shapeMatch.Groups[5].Value; $g = $shapeMatch.Groups[6].Value
+                if ($t -match 'super\(rb\.converter\.stub112\.LegacyProps\.of') {
+                    $t = $t -replace '(super\(rb\.converter\.stub112\.LegacyProps\.of\([^;]+;\s*)',
+                        ('$1' + $nl + "         this.setLegacyShape($a, $b, $c, $d, $e, $g);" + $nl + '         ')
+                }
+                elseif ($t -match 'this\.setLegacyNoCollision\(\)') {
+                    $t = $t -replace '(this\.setLegacyNoCollision\(\);\s*)',
+                        ('$1' + $nl + "         this.setLegacyShape($a, $b, $c, $d, $e, $g);" + $nl + '         ')
+                }
+                elseif ($t -match 'this\.setRegistryName\(') {
+                    $t = $t -replace '(this\.setRegistryName\([^;]+;\s*)',
+                        ("         this.setLegacyShape($a, $b, $c, $d, $e, $g);" + $nl + '         $1')
+                }
+            }
+
+            # Redstone power → modern signal methods (Direction, BlockGetter)
+            $t = $t -replace 'public\s+int\s+func_180656_a\s*\(\s*BlockState\s+(\w+)\s*,\s*IBlockAccess\s+(\w+)\s*,\s*BlockPos\s+(\w+)\s*,\s*EnumFacing\s+(\w+)\s*\)',
+                '@Override`r`n      protected int getSignal(BlockState $1, net.minecraft.world.level.BlockGetter $2, BlockPos $3, net.minecraft.core.Direction $4)'
+            $t = $t -replace 'public\s+int\s+func_176211_b\s*\(\s*BlockState\s+(\w+)\s*,\s*IBlockAccess\s+(\w+)\s*,\s*BlockPos\s+(\w+)\s*,\s*EnumFacing\s+(\w+)\s*\)',
+                '@Override`r`n      protected int getDirectSignal(BlockState $1, net.minecraft.world.level.BlockGetter $2, BlockPos $3, net.minecraft.core.Direction $4)'
+
+            # canConnectRedstone: prefer NeoForge extension signature
+            $t = $t -replace 'public\s+boolean\s+canConnectRedstone\s*\(\s*BlockState\s+(\w+)\s*,\s*IBlockAccess\s+(\w+)\s*,\s*BlockPos\s+(\w+)\s*,\s*EnumFacing\s+(\w+)\s*\)',
+                'public boolean canConnectRedstone(BlockState $1, net.minecraft.world.level.BlockGetter $2, BlockPos $3, net.minecraft.core.Direction $4)'
+
+            if ($t -match 'setLegacyShape|getSignal\(|getDirectSignal\(' -and $t -notmatch 'TODO_112_STAGE_E') {
+                $t = $t -replace '(?m)^(package\s+[^;]+;\s*)',
+                    ('$1' + $nl + '// TODO_112_STAGE_E: shapes/signal bridges; verify in-game.' + $nl)
+            }
+
+            if ($t -ne $o) {
+                # Fix accidental backtick-r from replace above
+                $t = $t -replace '`r`n', $nl
+                [System.IO.File]::WriteAllText($f.FullName, $t)
+                $touched++
+            }
+        }
+    }
+
+    # ---------- Resources: blockstates + texture paths ----------
+    if (Test-Path $assetsRoot) {
+        $modAssets = Get-ChildItem $assetsRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne 'minecraft' }
+        foreach ($modDir in $modAssets) {
+            $modid = $modDir.Name
+
+            # textures/blocks → textures/block
+            $blocksTex = Join-Path $modDir.FullName 'textures\blocks'
+            $blockTex = Join-Path $modDir.FullName 'textures\block'
+            if ((Test-Path $blocksTex) -and -not (Test-Path $blockTex)) {
+                Move-Item -LiteralPath $blocksTex -Destination $blockTex -Force
+                $touched++
+            }
+            elseif ((Test-Path $blocksTex) -and (Test-Path $blockTex)) {
+                Get-ChildItem $blocksTex -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+                    $rel = $_.FullName.Substring($blocksTex.Length).TrimStart('\', '/')
+                    $dest = Join-Path $blockTex $rel
+                    $destDir = Split-Path $dest -Parent
+                    if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+                    if (-not (Test-Path $dest)) { Copy-Item $_.FullName $dest -Force }
+                }
+                $touched++
+            }
+
+            # Rewrite model/blockstate JSON refs: :blocks/ → :block/ ; parent block/cube → minecraft:block/cube
+            $jsonFiles = Get-ChildItem $modDir.FullName -Recurse -Filter '*.json' -File -ErrorAction SilentlyContinue
+            foreach ($jf in $jsonFiles) {
+                $raw = [System.IO.File]::ReadAllText($jf.FullName)
+                $n = $raw
+                $n = $n -replace ('"' + [regex]::Escape($modid) + ':blocks/'), ('"' + $modid + ':block/')
+                $n = $n -replace '"minecraft:blocks/', '"minecraft:block/'
+                $n = $n -replace '"parent"\s*:\s*"block/', '"parent": "minecraft:block/'
+                $n = $n -replace '"parent"\s*:\s*"item/', '"parent": "minecraft:item/'
+                if ($n -ne $raw) {
+                    [System.IO.File]::WriteAllText($jf.FullName, $n)
+                    $touched++
+                }
+            }
+
+            # Blockstates: normal → "", model path → mod:block/name
+            $bsDir = Join-Path $modDir.FullName 'blockstates'
+            if (Test-Path $bsDir) {
+                Get-ChildItem $bsDir -Filter '*.json' -File | ForEach-Object {
+                    $raw = [System.IO.File]::ReadAllText($_.FullName)
+                    $n = $raw
+                    # "model": "modid:name" → "model": "modid:block/name" when not already block/ or item/ or custom/
+                    $n = [regex]::Replace($n, '"model"\s*:\s*"' + [regex]::Escape($modid) + ':((?!block/|item/|custom/)[^"]+)"',
+                        '"model": "' + $modid + ':block/$1"')
+                    # Replace variant key "normal" with empty string key for modern loaders
+                    $n = $n -replace '"normal"\s*:', '"":'
+                    # If facing variants exist, drop the empty-default entry (1.12 often had both)
+                    if ($n -match '"facing=') {
+                        $n = [regex]::Replace($n, '(?s),?\s*""\s*:\s*\{[^{}]*\}', '')
+                        # clean trailing commas before closing braces in variants object
+                        $n = $n -replace ',(\s*})', '$1'
+                        $n = $n -replace '(\{\s*),', '$1'
+                    }
+                    if ($n -ne $raw) {
+                        [System.IO.File]::WriteAllText($_.FullName, $n)
+                        $touched++
+                    }
+                    # Also collect names from filenames
+                    [void]$blockNames.Add([IO.Path]::GetFileNameWithoutExtension($_.Name))
+                }
+            }
+        }
+    }
+
+    # ---------- data/: loot tables + mineable tag ----------
+    if ($blockNames.Count -eq 0 -and $ModId) {
+        # fallback from blockstates if java scan empty
+        $bs = Join-Path $assetsRoot "$ModId\blockstates"
+        if (Test-Path $bs) {
+            Get-ChildItem $bs -Filter '*.json' | ForEach-Object { [void]$blockNames.Add([IO.Path]::GetFileNameWithoutExtension($_.Name)) }
+        }
+    }
+
+    if ($blockNames.Count -gt 0) {
+        $modData = if ($ModId) { $ModId } else { 'examplemod' }
+        # prefer assets mod id if single
+        $assetMods = @(Get-ChildItem $assetsRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'minecraft' } | ForEach-Object { $_.Name })
+        if ($assetMods.Count -ge 1) { $modData = $assetMods[0] }
+
+        $lootDir = Join-Path $dataRoot "$modData\loot_table\blocks"
+        New-Item -ItemType Directory -Force -Path $lootDir | Out-Null
+        foreach ($bn in ($blockNames | Sort-Object)) {
+            if (-not $bn) { continue }
+            $path = ($bn -replace '^.*:', '')
+            $lootFile = Join-Path $lootDir ($path + '.json')
+            if (Test-Path $lootFile) { continue }
+            $loot = @"
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "$modData`:$path"
+        }
+      ],
+      "conditions": [
+        {
+          "condition": "minecraft:survives_explosion"
+        }
+      ]
+    }
+  ]
+}
+"@
+            # Fix accidental escape of colon in name - PowerShell double-quote
+            $loot = $loot -replace "$modData``:$path", "$modData`:$path"
+            $loot = @"
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "${modData}:${path}"
+        }
+      ],
+      "conditions": [
+        {
+          "condition": "minecraft:survives_explosion"
+        }
+      ]
+    }
+  ]
+}
+"@
+            [System.IO.File]::WriteAllText($lootFile, $loot.Trim() + "`r`n")
+            $touched++
+        }
+
+        # mineable/pickaxe tag
+        $tagDir = Join-Path $dataRoot 'minecraft\tags\block\mineable'
+        New-Item -ItemType Directory -Force -Path $tagDir | Out-Null
+        $tagFile = Join-Path $tagDir 'pickaxe.json'
+        $values = ($blockNames | ForEach-Object {
+            $p = ($_ -replace '^.*:', '')
+            "    `"${modData}:${p}`""
+        }) -join ",`r`n"
+        $tagJson = "{`r`n  `"replace`": false,`r`n  `"values`": [`r`n$values`r`n  ]`r`n}`r`n"
+        [System.IO.File]::WriteAllText($tagFile, $tagJson)
+        $touched++
+
+        # optional: needs_stone_tool empty skip
+    }
+
+    return $touched
+}
+
 function Invoke-112ProxyStubPass {
     param([string]$Root)
     $javaRoot = Join-Path $Root 'src\main\java'
@@ -2408,6 +2699,10 @@ Write-Step 'Stage D: Properties, horizontal facing, collision/cutout, creative t
 $d = Invoke-112StageDBehaviourPass -Root $OutputPath
 Write-Ok "Stage D touched $d file(s)"
 
+Write-Step 'Stage E+: shapes, blockstates/textures, loot/tags, redstone/use bridges'
+$e = Invoke-112StageEPlusPass -Root $OutputPath -ModId $meta.mod_id
+Write-Ok "Stage E+ touched $e path(s)"
+
 Write-Step 'Gradle wrapper'
 Install-WrapperIfPossible -Root $OutputPath
 
@@ -2420,27 +2715,30 @@ $report = @"
 - Output: $OutputPath
 - Target: Minecraft $MinecraftVersion / NeoForge $NeoVersion
 - Detected MC hint: $($meta.mc_hint)
-- Converter stage: **D (v0.5)** - Properties/facing/tabs on top of Stage C registration
+- Converter stage: **E+ (v0.6)** - shapes, resources, loot/tags, interaction bridges
 - Generated: $gen
 
 ## Automated
 
-### Stage A–C
-1. Scaffold, stubs, @Mod + ElementDiscovery + RegisterEvent + BlockItem + lang JSON
+### Stage A–D
+1. Scaffold → registration → Properties/facing/tabs
 
-### Stage D
-2. **LegacyProps.of** folds Material/sound/hardness/light/opacity into ``BlockBehaviour.Properties``
-3. **LegacyHorizontalBlock112** for FACING blocks (real ``HORIZONTAL_FACING``)
-4. Empty collision + cutout flags; ``render_type: cutout_mipped`` on matching models
-5. **CreativeModeTab** registration from MCreator ``CreativeTabs`` + block→tab assignment
+### Stage E+
+2. **Voxel shapes** from 1.12 AxisAlignedBB (0..1) via ``setLegacyShape``
+3. **Blockstate** modernization (``normal``→``""``, model ``mod:block/name``)
+4. **Textures** ``blocks/`` → ``block/`` (folder + references)
+5. **Loot tables** self-drop per block; **mineable/pickaxe** tag
+6. **Redstone** ``func_180656_a``/``func_176211_b`` → getSignal/getDirectSignal
+7. **Use/neighbor** reflection bridges on LegacyBlock112 to legacy ``func_*`` methods
 
-## You must still fix manually (post Stage D)
+## You must still fix manually (post Stage E+)
 
-- Accurate voxel shapes (not just full-block / empty)
-- Non-horizontal FACING / multi-property states
-- GUIs / TileEntities / packets
-- Recipes / loot / tags
-- Runtime testing on NeoForge 26.2
+- Facing-dependent multi-AABB shapes
+- GUIs / menus / screens (1.12 IGuiHandler era)
+- Tile entities / block entities
+- Full packet modernization
+- Recipes beyond self-drop loot
+- Runtime playtest (``runClient``)
 
 ## Next
 

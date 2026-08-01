@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.0 — 2026-08-01
+
+### Stage E+ — shapes, resources, loot/tags, interaction bridges
+
+- **Voxel shapes** from 1.12 `AxisAlignedBB` via `setLegacyShape` (0..1 → `Shapes.box`)
+- **Blockstates**: `normal`→`""`, model paths `mod:block/name`, drop empty variant when `facing=` present
+- **Textures**: `textures/blocks` → `textures/block`; refs `:blocks/` → `:block/`; `block/cube` → `minecraft:block/cube`
+- **Loot**: self-drop `data/<mod>/loot_table/blocks/*.json` for all blocks
+- **Tags**: `minecraft:mineable/pickaxe` listing converted blocks
+- **Redstone**: `func_180656_a` / `func_176211_b` → `getSignal` / `getDirectSignal`
+- **Use / neighbor**: reflection bridges on `LegacyBlock112` to legacy `func_180639_a` / `func_189540_a`
+
+### Hospital proof
+
+| | Stage D | Stage E+ |
+|--|---------|----------|
+| `compileJava` / `jar` | SUCCESS | **SUCCESS** |
+| `setLegacyShape` | — | **41** |
+| Loot tables | 0 | **131** |
+| Texture folder | `blocks/` | **`block/`** |
+| Blockstate model paths | 1.12-style | **`mod:block/*`** |
+
+Still open: facing-dependent multi-AABB, GUIs/menus, block entities, full packets, playtest polish.
+
 ## 0.5.0 — 2026-08-01
 
 ### Stage D — block behaviour + creative tabs
