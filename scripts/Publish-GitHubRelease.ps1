@@ -3,13 +3,13 @@
   Create/update a GitHub Release and upload portable + setup artifacts from dist/.
 
 .EXAMPLE
-  .\scripts\Publish-GitHubRelease.ps1 -Tag v0.8.0
+  .\scripts\Publish-GitHubRelease.ps1 -Tag v0.9.0
 #>
 [CmdletBinding()]
 param(
-    [string]$Tag = 'v0.8.0',
+    [string]$Tag = 'v0.9.0',
     [string]$Repo = 'RobbieB1980/1.12-to-26.2-Java-Converter',
-    [string]$Name = 'RB 1.12 to 26.2 Java Converter 0.8.0'
+    [string]$Name = 'RB 1.12 to 26.2 Java Converter 0.9.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,14 +39,14 @@ $notes = @"
 
 Experimental converter: **Forge 1.12.2** jars/projects to **NeoForge 26.2** scaffolds.
 
-### Stage G (v0.8)
+### Stage H (v0.9)
 
-- **DeferredRegister** for blocks/items + master creative tab ``Hospital / Converted Items``
-- Safe per-element bootstrap; vanilla tab fallbacks; ``[112to262]`` logs
+- **Hard creative fix**: ``GeneratedRegistries`` lists every block/item explicitly (no reflection)
+- Tab **Hospital / Converted Items**; log ``GeneratedRegistries.bootstrap start, explicitBlocks=N``
 
-### Stage F → A
+### Stage G → A
 
-- Explicit class list → resources → behaviour → registration → stubs → @Mod
+- Deferred attempts → bootstrap list → resources → behaviour → stubs → @Mod
 
 ### Downloads
 

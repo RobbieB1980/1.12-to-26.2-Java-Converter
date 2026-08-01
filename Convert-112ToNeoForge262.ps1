@@ -2210,6 +2210,233 @@ function Invoke-112StageEPlusPass {
     return $touched
 }
 
+function Invoke-112StageHExplicitRegistryPass {
+    param(
+        [string]$Root,
+        [string]$ModId = 'examplemod'
+    )
+    $javaRoot = Join-Path $Root 'src\main\java'
+    if (-not (Test-Path $javaRoot)) { return 0 }
+    $nl = "`r`n"
+
+    # Discover package + BlockCustom registry pairs
+    $modPkg = $null
+    $pairs = New-Object System.Collections.Generic.List[object]
+    $seenIds = @{}
+    Get-ChildItem $javaRoot -Recurse -Filter '*.java' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '[\\/]rb[\\/]converter[\\/]' } |
+        ForEach-Object {
+            $raw = [System.IO.File]::ReadAllText($_.FullName)
+            if (-not $modPkg -and $raw -match '(?m)^package\s+([\w.]+)\s*;') { $modPkg = $Matches[1] }
+            if ($raw -notmatch 'static\s+class\s+BlockCustom\b') { return }
+            if ($raw -notmatch '(?m)^public\s+class\s+(\w+)') { return }
+            $outer = $Matches[1]
+            $id = $null
+            if ($raw -match 'setRegistryName\(\s*"([^"]+)"\s*\)') { $id = $Matches[1] }
+            elseif ($raw -match '@ObjectHolder\s*\(\s*"[^"]+:([^"]+)"\s*\)') { $id = $Matches[1] }
+            else { $id = $outer.ToLowerInvariant() }
+            $id = ($id -replace '[^a-z0-9_/.-]', '').ToLowerInvariant()
+            if (-not $id) { return }
+            if ($seenIds.ContainsKey($id)) {
+                $n = 2
+                while ($seenIds.ContainsKey("$id$n")) { $n++ }
+                $id = "$id$n"
+            }
+            $seenIds[$id] = $true
+            $pairs.Add([pscustomobject]@{ Outer = $outer; Id = $id }) | Out-Null
+        }
+
+    if (-not $modPkg) { $modPkg = 'com.example.mod' }
+    if ($pairs.Count -eq 0) {
+        Write-Warn2 'Stage H: no BlockCustom classes found'
+        return 0
+    }
+    Write-Info "Stage H: generating explicit registry for $($pairs.Count) blocks (pkg=$modPkg modid=$ModId)"
+
+    # Build registration statements
+    $regLines = New-Object System.Collections.Generic.List[string]
+    foreach ($p in $pairs) {
+        $regLines.Add(@"
+        {
+            final String id = "$($p.Id)";
+            var block = BLOCKS.register(id, () -> {
+                var b = new $($p.Outer).BlockCustom();
+                try { $($p.Outer).block = b; } catch (Throwable ignored) {}
+                return b;
+            });
+            ITEMS.registerSimpleBlockItem(block);
+        }
+"@) | Out-Null
+    }
+    $regBody = ($regLines -join $nl)
+
+    $gen = @"
+package $modPkg;
+
+import com.mojang.logging.LogUtils;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.CreativeModeTabs;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
+import net.neoforged.neoforge.registries.DeferredRegister;
+import org.slf4j.Logger;
+
+/**
+ * Stage H: converter-generated explicit DeferredRegister entries.
+ * Does not use MCreator Elements reflection — every BlockCustom is listed here.
+ */
+public final class GeneratedRegistries {
+    private static final Logger LOGGER = LogUtils.getLogger();
+    public static final String MODID = "$ModId";
+
+    public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(MODID);
+    public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MODID);
+    public static final DeferredRegister<CreativeModeTab> TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
+
+    private GeneratedRegistries() {}
+
+    public static void bootstrap(IEventBus modEventBus) {
+        LOGGER.info("[112to262] GeneratedRegistries.bootstrap start, explicitBlocks=$($pairs.Count)");
+
+$regBody
+
+        TABS.register("all", () -> CreativeModeTab.builder()
+                .title(Component.literal("Hospital / Converted Items"))
+                .icon(() -> {
+                    for (var e : ITEMS.getEntries()) {
+                        Item it = e.get();
+                        if (it != null) return new ItemStack(it);
+                    }
+                    return ItemStack.EMPTY;
+                })
+                .displayItems((params, out) -> {
+                    int n = 0;
+                    for (var e : ITEMS.getEntries()) {
+                        Item it = e.get();
+                        if (it != null) {
+                            out.accept(it);
+                            n++;
+                        }
+                    }
+                    LOGGER.info("[112to262] creative tab 'all' offering {} items", n);
+                })
+                .build());
+
+        BLOCKS.register(modEventBus);
+        ITEMS.register(modEventBus);
+        TABS.register(modEventBus);
+        LOGGER.info("[112to262] GeneratedRegistries registered on mod bus (blocks+items+tab all)");
+    }
+
+    /** Vanilla tab fallback — call from mod addCreative listener. */
+    public static void addToVanillaTabs(BuildCreativeModeTabContentsEvent event) {
+        if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS
+                || event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS
+                || event.getTabKey() == CreativeModeTabs.INGREDIENTS
+                || event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
+            for (var e : ITEMS.getEntries()) {
+                Item it = e.get();
+                if (it != null) event.accept(it);
+            }
+        }
+    }
+
+    public static List<Item> allItems() {
+        List<Item> list = new ArrayList<>();
+        for (var e : ITEMS.getEntries()) {
+            Item it = e.get();
+            if (it != null) list.add(it);
+        }
+        return list;
+    }
+}
+"@
+    # Find directory for package
+    $pkgPath = Join-Path $javaRoot ($modPkg -replace '\.', [IO.Path]::DirectorySeparatorChar.ToString())
+    New-Item -ItemType Directory -Force -Path $pkgPath | Out-Null
+    $outFile = Join-Path $pkgPath 'GeneratedRegistries.java'
+    [System.IO.File]::WriteAllText($outFile, $gen.Trim() + $nl)
+
+    # Rewrite @Mod class to use GeneratedRegistries.bootstrap only
+    $modFiles = Get-ChildItem $javaRoot -Recurse -Filter '*.java' -File |
+        Where-Object { Select-String -Path $_.FullName -Pattern '@Mod\s*\(' -Quiet }
+    foreach ($mf in $modFiles) {
+        $t = [System.IO.File]::ReadAllText($mf.FullName)
+        if ($t -notmatch 'public\s+class\s+(\w+)') { continue }
+        $className = $Matches[1]
+
+        # Ensure import / logger optional
+        if ($t -notmatch 'GeneratedRegistries') {
+            $t = $t -replace '(?m)^(package\s+[^;]+;\s*)', ('$1' + $nl + '// Stage H: explicit GeneratedRegistries bootstrap' + $nl)
+        }
+
+        # Replace constructor entirely
+        if ($t -match 'public\s+' + [regex]::Escape($className) + '\s*\(\s*IEventBus') {
+            $newCtor = @"
+public $className(IEventBus modEventBus) {
+        instance = this;
+        // Stage H: explicit DeferredRegister of every BlockCustom — no Elements reflection required for items
+        GeneratedRegistries.bootstrap(modEventBus);
+        modEventBus.addListener(this::commonSetup);
+        modEventBus.addListener(this::addCreative);
+        // Optional legacy MCreator element init (procedures/tabs); failures must not block items
+        if (this.elements != null) {
+            try { this.elements.preInit(); }
+            catch (Throwable t) { System.err.println("[112to262] legacy preInit failed (items still registered): " + t); }
+        }
+    }
+"@
+            $t = [regex]::Replace($t,
+                '(?s)public\s+' + [regex]::Escape($className) + '\s*\(\s*IEventBus\s+modEventBus\s*\)\s*\{.*?\n    \}',
+                $newCtor.TrimEnd())
+        }
+
+        # Replace addCreative to use GeneratedRegistries
+        if ($t -match 'addCreative') {
+            $t = [regex]::Replace($t, '(?s)private void addCreative\s*\(\s*final\s+BuildCreativeModeTabContentsEvent\s+event\s*\)\s*\{.*?\n    \}', @'
+private void addCreative(final BuildCreativeModeTabContentsEvent event) {
+        GeneratedRegistries.addToVanillaTabs(event);
+    }
+'@)
+        }
+        else {
+            # inject methods if missing
+            if ($t -notmatch 'void addCreative') {
+                $t = $t -replace '(private void commonSetup)', @'
+private void addCreative(final BuildCreativeModeTabContentsEvent event) {
+        GeneratedRegistries.addToVanillaTabs(event);
+    }
+
+    private void commonSetup
+'@
+            }
+        }
+
+        # commonSetup note
+        if ($t -match 'private void commonSetup' -and $t -notmatch 'GeneratedRegistries active') {
+            $t = $t -replace '(private void commonSetup\(final FMLCommonSetupEvent event\)\s*\{\s*)',
+                ('$1' + $nl + '        System.out.println("[112to262] GeneratedRegistries active, itemEntries=" + GeneratedRegistries.ITEMS.getEntries().size());' + $nl)
+        }
+
+        # Disable old deferred fields on mod class if present to avoid double-register (optional keep unused)
+        $t = $t -replace 'BLOCKS\.register\(modEventBus\);', '/* Stage H: moved to GeneratedRegistries */'
+        $t = $t -replace 'ITEMS\.register\(modEventBus\);', '/* Stage H: moved to GeneratedRegistries */'
+        $t = $t -replace 'CREATIVE_TABS\.register\(modEventBus\);', '/* Stage H: moved to GeneratedRegistries */'
+        $t = $t -replace 'modEventBus\.addListener\(this::onRegisterBlocksItems\);', '/* Stage H: removed RegisterEvent path */'
+
+        [System.IO.File]::WriteAllText($mf.FullName, $t)
+    }
+
+    return $pairs.Count
+}
+
 function Invoke-112StageGDeferredCreativePass {
     param([string]$Root)
     $javaRoot = Join-Path $Root 'src\main\java'
@@ -3197,6 +3424,10 @@ Write-Step 'Stage G: DeferredRegister + master creative tab (empty-menu fix)'
 $g = Invoke-112StageGDeferredCreativePass -Root $OutputPath
 Write-Ok "Stage G touched $g file(s)"
 
+Write-Step 'Stage H: explicit GeneratedRegistries (bypass reflection)'
+$h = Invoke-112StageHExplicitRegistryPass -Root $OutputPath -ModId $meta.mod_id
+Write-Ok "Stage H wrote registry with $h block(s)"
+
 Write-Step 'Gradle wrapper'
 Install-WrapperIfPossible -Root $OutputPath
 
@@ -3209,26 +3440,22 @@ $report = @"
 - Output: $OutputPath
 - Target: Minecraft $MinecraftVersion / NeoForge $NeoVersion
 - Detected MC hint: $($meta.mc_hint)
-- Converter stage: **G (v0.8)** - DeferredRegister + master creative tab
+- Converter stage: **H (v0.9)** - explicit GeneratedRegistries (no runtime discovery)
 - Generated: $gen
 
 ## Automated
 
-### Stage A–F
-1. Scaffold → stubs → discovery list → resources
-
-### Stage G (creative still empty fix)
-2. Switch block/item/tab registration to **DeferredRegister**
-3. Per-element try/catch bootstrap (one bad class cannot wipe all)
-4. Register a guaranteed **``$($meta.mod_id)_all``** creative tab with every item
-5. Keep vanilla tab fallbacks + ``[112to262]`` logs
+### Stage H (creative empty hard-fix)
+1. ``GeneratedRegistries.java`` registers **every BlockCustom** + BlockItem via DeferredRegister
+2. Creative tab **Hospital / Converted Items** lists ``ITEMS.getEntries()``
+3. Mod constructor only calls ``GeneratedRegistries.bootstrap(bus)``
+4. Does **not** depend on MCreator Elements reflection for items to appear
 
 ## Next
 
 cd "$OutputPath"
 .\gradlew.bat jar
-# Put build/libs/*.jar in NeoForge 26.2 mods/
-# Check latest.log for: [112to262] elements= N blocks= N items= N
+# Install build/libs/*.jar — open creative tab **Hospital / Converted Items**
 "@
 [System.IO.File]::WriteAllText($reportPath, $report)
 Write-Ok "Wrote $reportPath"

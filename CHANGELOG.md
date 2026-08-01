@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.0 — 2026-08-01
+
+### Stage H — explicit GeneratedRegistries (hard fix for empty creative)
+
+**Still no creative items after F/G?** Runtime element discovery / list-based registration was still fragile.
+
+**Hard fix:**
+- Generate ``GeneratedRegistries.java`` with **131 explicit** ``BLOCKS.register`` + ``ITEMS.registerSimpleBlockItem`` calls
+- Creative tab **Hospital / Converted Items** fills from ``ITEMS.getEntries()``
+- Mod constructor: **only** ``GeneratedRegistries.bootstrap(bus)`` — no reflection required for items
+- Vanilla tab fallbacks via ``GeneratedRegistries.addToVanillaTabs``
+
+### Hospital install
+
+```
+...-26.2-10\build\libs\the_hospital_mod-1.0.0+from112-mc26.2-neoforge.jar
+```
+
+Expect log: ``[112to262] GeneratedRegistries.bootstrap start, explicitBlocks=131``  
+Creative tab: **Hospital / Converted Items**
+
 ## 0.8.0 — 2026-08-01
 
 ### Stage G — DeferredRegister + master creative tab (still-empty creative)

@@ -1,6 +1,6 @@
 # RB 1.12 → 26.2 Java Converter
 
-**Current release: v0.8.0 (experimental — Stage G DeferredRegister + master creative tab)**
+**Current release: v0.9.0 (experimental — Stage H explicit GeneratedRegistries; creative hard-fix)**
 
 Dedicated converter for **Minecraft Forge 1.12.2** finished `.jar` mods (and 1.12-style source trees) toward a **NeoForge 26.2** ModDevGradle scaffold.
 
@@ -29,9 +29,11 @@ This is **not** the same product as [LegacyJavaConverter](https://github.com/Rob
 
 **Stage F (v0.7):** explicit element class bootstrap  
 
-**Stage G (v0.8):** **DeferredRegister** + master **"Hospital / Converted Items"** creative tab + safe bootstrap  
+**Stage G (v0.8):** DeferredRegister wiring attempts  
 
-Hospital: reinstall jar from latest convert (`-26.2-9`). Look for creative tab **Hospital / Converted Items** and log line `DeferredRegister queued blocks=`.
+**Stage H (v0.9):** **`GeneratedRegistries.java`** — every block/item listed explicitly (no reflection)  
+
+Hospital: install jar from **`-26.2-10`**. Creative tab **Hospital / Converted Items**. Log: `GeneratedRegistries.bootstrap start, explicitBlocks=131`.
 
 ## What it does **not** do (yet)
 
