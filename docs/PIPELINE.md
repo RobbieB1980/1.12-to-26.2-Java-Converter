@@ -29,8 +29,8 @@
 - Mechanical **1.12 → modern** package renames (+ ServerPlayer / MobEffect fixes)
 - **Stage A:** inject `rb.converter.stub112`, stub proxies, modern `@Mod` + IEventBus ctor
 - **Stage B:** LegacyBlock112, Material/EnumFacing/ItemBlock/properties, Level SRG helpers
-- Map FML lifecycle / GameRegistry / IGuiHandler / ModelRegistry leftovers to stubs
-- **Do not** invent full DeferredRegister rewrites for every element (stubs compile; runtime no-ops)
+- **Stage C:** ElementDiscovery, single-instance BlockItem, real `RegisterEvent`, lang JSON
+- Map FML lifecycle / GameRegistry leftovers to stubs where still needed
 - Write `MIGRATION_112_REPORT.md`
 
 ### 3. Full pipeline (`Convert-OldJar112ToNeoForge262.ps1`)

@@ -3,13 +3,13 @@
   Create/update a GitHub Release and upload portable + setup artifacts from dist/.
 
 .EXAMPLE
-  .\scripts\Publish-GitHubRelease.ps1 -Tag v0.3.0
+  .\scripts\Publish-GitHubRelease.ps1 -Tag v0.4.0
 #>
 [CmdletBinding()]
 param(
-    [string]$Tag = 'v0.3.0',
+    [string]$Tag = 'v0.4.0',
     [string]$Repo = 'RobbieB1980/1.12-to-26.2-Java-Converter',
-    [string]$Name = 'RB 1.12 to 26.2 Java Converter 0.3.0'
+    [string]$Name = 'RB 1.12 to 26.2 Java Converter 0.4.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,14 +39,18 @@ $notes = @"
 
 Experimental converter: **Forge 1.12.2** jars/projects to **NeoForge 26.2** scaffolds.
 
+### Stage C (v0.4)
+
+- ElementDiscovery + RegisterEvent blocks/items + real BlockItem + en_us.json
+- Hospital: ``compileJava`` **SUCCESS** with live registration path (LegacyBlock112 behaviour still shimmed)
+
 ### Stage B (v0.3)
 
-- LegacyBlock112 + Material/EnumFacing/ItemBlock/properties compile stubs
-- Hospital proof: unique errors **5472 → 0**; ``compileJava`` **SUCCESS** (stub no-ops — not runtime-ready)
+- LegacyBlock112 + Material/EnumFacing/ItemBlock compile stubs; errors **5472 → 0**
 
 ### Stage A (v0.2)
 
-- Stub IProxy/ClientProxy/ServerProxy; modern ``@Mod`` + IEventBus; ServerPlayer/MobEffect fixes
+- IProxy stubs; modern ``@Mod`` + IEventBus; ServerPlayer/MobEffect fixes
 
 ### Downloads
 

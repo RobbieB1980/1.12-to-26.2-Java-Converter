@@ -1,6 +1,6 @@
 # RB 1.12 → 26.2 Java Converter
 
-**Current release: v0.3.0 (experimental — Stage B block stubs; Hospital compileJava green via stubs)**
+**Current release: v0.4.0 (experimental — Stage C registration; Hospital compileJava green)**
 
 Dedicated converter for **Minecraft Forge 1.12.2** finished `.jar` mods (and 1.12-style source trees) toward a **NeoForge 26.2** ModDevGradle scaffold.
 
@@ -17,17 +17,19 @@ This is **not** the same product as [LegacyJavaConverter](https://github.com/Rob
 
 ## Stages included
 
-**Stage A (v0.2):** IProxy stubs, FML→stub112, modern `@Mod` + IEventBus, ServerPlayer/MobEffect fixes  
+**Stage A (v0.2):** IProxy stubs, FML→stub112, modern `@Mod` + IEventBus  
 
-**Stage B (v0.3):** LegacyBlock112, Material/EnumFacing/ItemBlock/properties stubs, SoundType + Level SRG helpers  
+**Stage B (v0.3):** LegacyBlock112 + 1.12 type stubs (compile surface)  
 
-Hospital proof: **compileJava SUCCESS** with stub112 (runtime still incomplete).
+**Stage C (v0.4):** ElementDiscovery + **RegisterEvent** blocks/items + real **BlockItem** + lang JSON  
+
+Hospital proof: **compileJava SUCCESS**; blocks/items should register at runtime (behaviour still LegacyBlock112 shims).
 
 ## What it does **not** do (yet)
 
-- Runtime-correct NeoForge port (stubs are compile shims / no-ops)  
-- Real **DeferredRegister** / BlockBehaviour.Properties / BlockItem / CreativeModeTab  
-- Complete model / texture / datapack modernization  
+- Full block behaviour port (Properties, facing, voxel shapes, redstone)  
+- Per-mod CreativeModeTab mapping (Stage C dumps into BUILDING_BLOCKS)  
+- GUIs / TileEntities / networking modernization  
 - Mixins without hand repair  
 
 ## Requirements

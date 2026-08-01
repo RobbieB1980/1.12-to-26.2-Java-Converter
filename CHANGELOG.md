@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0 — 2026-08-01
+
+### Stage C — real registration path (MCreator-oriented)
+
+- **ElementDiscovery**: classpath scan for `@ModElement.Tag` (replaces empty ASMDataTable)
+- **initElements**: single-instance `BlockCustom` + real `BlockItem` (no null ObjectHolder)
+- **RegisterEvent** on mod bus registers blocks/items using paths from `setRegistryName`
+- Creative dump into `CreativeModeTabs.BUILDING_BLOCKS`
+- `en_us.lang` → `en_us.json` (legacy `.lang` kept as `.112-reference`)
+
+### Hospital proof
+
+| | Stage B (v0.3) | Stage C (v0.4) |
+|--|----------------|----------------|
+| `compileJava` | SUCCESS | **SUCCESS** |
+| Element discovery | empty ASM stub | **classpath scan** |
+| BlockItem | stub ItemBlock / null block | **real BlockItem + RegisterEvent** |
+| Lang | `en_us.lang` only | **`en_us.json`** |
+
+Still shimmed: LegacyBlock112 behaviour, facing/collision, per-tab CreativeModeTab, GUIs/packets.
+
 ## 0.3.0 — 2026-08-01
 
 ### Stage B — 1.12 block / item compile surface

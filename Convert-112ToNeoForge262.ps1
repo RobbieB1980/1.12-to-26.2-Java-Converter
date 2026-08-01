@@ -874,6 +874,150 @@ public final class LegacyLevel {
     }
 }
 '@
+        'ElementDiscovery.java' = @'
+package rb.converter.stub112;
+
+import java.io.File;
+import java.lang.annotation.Annotation;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+
+/**
+ * Stage C: find classes bearing a runtime annotation under a package
+ * (replaces empty FML ASMDataTable scanning).
+ */
+public final class ElementDiscovery {
+    private ElementDiscovery() {}
+
+    public static List<Class<?>> findAnnotated(Class<? extends Annotation> annotation, String packageName) {
+        List<Class<?>> found = new ArrayList<>();
+        if (annotation == null || packageName == null || packageName.isEmpty()) return found;
+        String path = packageName.replace('.', '/');
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        if (cl == null) cl = ElementDiscovery.class.getClassLoader();
+        try {
+            Enumeration<URL> roots = cl.getResources(path);
+            while (roots.hasMoreElements()) {
+                URL url = roots.nextElement();
+                String protocol = url.getProtocol();
+                if ("file".equals(protocol)) {
+                    scanDirectory(new File(url.toURI()), packageName, annotation, found, cl);
+                } else if ("jar".equals(protocol)) {
+                    scanJarUrl(url, path, packageName, annotation, found, cl);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return found;
+    }
+
+    private static void scanDirectory(File dir, String packageName, Class<? extends Annotation> annotation,
+                                      List<Class<?>> found, ClassLoader cl) {
+        if (dir == null || !dir.isDirectory()) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File f : files) {
+            if (f.isDirectory()) {
+                scanDirectory(f, packageName + "." + f.getName(), annotation, found, cl);
+            } else if (f.getName().endsWith(".class") && !f.getName().contains("$")) {
+                String simple = f.getName().substring(0, f.getName().length() - 6);
+                loadIfAnnotated(packageName + "." + simple, annotation, found, cl);
+            }
+        }
+    }
+
+    private static void scanJarUrl(URL url, String pathPrefix, String packageName,
+                                   Class<? extends Annotation> annotation, List<Class<?>> found, ClassLoader cl) {
+        try {
+            String s = url.getPath();
+            // jar:file:/.../mod.jar!/net/mcreator/foo
+            int bang = s.indexOf('!');
+            String jarPath = s;
+            if (s.startsWith("file:")) jarPath = s.substring(5);
+            if (bang >= 0) jarPath = s.substring(s.startsWith("file:") ? 5 : 0, bang);
+            if (jarPath.contains("%20")) jarPath = java.net.URLDecoder.decode(jarPath, java.nio.charset.StandardCharsets.UTF_8);
+            // Windows leading slash: /F:/...
+            if (jarPath.length() > 2 && jarPath.charAt(0) == '/' && jarPath.charAt(2) == ':') {
+                jarPath = jarPath.substring(1);
+            }
+            try (JarFile jar = new JarFile(jarPath)) {
+                Enumeration<JarEntry> en = jar.entries();
+                String prefix = pathPrefix.endsWith("/") ? pathPrefix : pathPrefix + "/";
+                while (en.hasMoreElements()) {
+                    JarEntry e = en.nextElement();
+                    String name = e.getName();
+                    if (!name.startsWith(prefix) || !name.endsWith(".class") || name.contains("$")) continue;
+                    String className = name.substring(0, name.length() - 6).replace('/', '.');
+                    loadIfAnnotated(className, annotation, found, cl);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void loadIfAnnotated(String className, Class<? extends Annotation> annotation,
+                                        List<Class<?>> found, ClassLoader cl) {
+        try {
+            Class<?> c = Class.forName(className, false, cl);
+            if (c.getAnnotation(annotation) != null) {
+                found.add(c);
+            }
+        } catch (Throwable ignored) {
+            /* skip unloadable / client-only */
+        }
+    }
+}
+'@
+        'LegacyBlocks.java' = @'
+package rb.converter.stub112;
+
+import java.util.IdentityHashMap;
+import java.util.Locale;
+import java.util.Map;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
+
+/** Stage C helpers: resolve registry paths for LegacyBlock112 / BlockItem pairs. */
+public final class LegacyBlocks {
+    private static final Map<Object, String> ITEM_IDS = new IdentityHashMap<>();
+    private LegacyBlocks() {}
+
+    public static void rememberItem(Item item, Block block) {
+        if (item == null) return;
+        ITEM_IDS.put(item, resolveBlockPath(block));
+    }
+
+    public static String resolveBlockPath(Block block) {
+        if (block instanceof LegacyBlock112 legacy) {
+            String n = legacy.getLegacyRegistryName();
+            if (n != null && !n.isEmpty()) return stripPath(n);
+        }
+        String simple = block == null ? "unknown" : block.getClass().getSimpleName().toLowerCase(Locale.ROOT);
+        return simple.replaceAll("[^a-z0-9_]", "");
+    }
+
+    public static String resolveItemPath(Item item) {
+        if (item == null) return "unknown_item";
+        String remembered = ITEM_IDS.get(item);
+        if (remembered != null) return remembered;
+        if (item instanceof BlockItem bi) return resolveBlockPath(bi.getBlock());
+        return item.getClass().getSimpleName().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_]", "");
+    }
+
+    private static String stripPath(String name) {
+        int i = name.indexOf(':');
+        String path = i >= 0 ? name.substring(i + 1) : name;
+        return path.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_/.-]", "");
+    }
+}
+'@
         'LegacyBlock112.java' = @'
 package rb.converter.stub112;
 
@@ -913,6 +1057,11 @@ public class LegacyBlock112 extends Block {
     }
 
     public Object getRegistryName() {
+        return legacyRegistryName;
+    }
+
+    /** Stage C: path (or mod:path) captured from setRegistryName. */
+    public String getLegacyRegistryName() {
         return legacyRegistryName;
     }
 
@@ -1148,6 +1297,200 @@ function Invoke-112StageBBlockRewrites {
             $touched++
         }
     }
+    return $touched
+}
+
+function Invoke-112StageCRegistryPass {
+    param([string]$Root)
+    $javaRoot = Join-Path $Root 'src\main\java'
+    if (-not (Test-Path $javaRoot)) { return 0 }
+    $files = Get-ChildItem $javaRoot -Recurse -Filter '*.java' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '[\\/]rb[\\/]converter[\\/]stub112[\\/]' }
+    $touched = 0
+    $nl = [Environment]::NewLine
+
+    foreach ($f in $files) {
+        $t = [System.IO.File]::ReadAllText($f.FullName)
+        $o = $t
+        $name = $f.Name
+
+        # --- Elements*: replace empty ASM discovery with classpath annotation scan ---
+        if ($name -match '^Elements\w+\.java$') {
+            $elClass = [IO.Path]::GetFileNameWithoutExtension($name)
+            # Rewrite from start of preInit through Collections.sort (keeps sort + initElements + network)
+            $t2 = [regex]::Replace($t, '(?s)public\s+void\s+preInit\s*\(\s*\)\s*\{.*?(\r?\n\s*Collections\.sort\(this\.elements\);)', {
+                param($m)
+                $sortLine = $m.Groups[1].Value
+                @"
+public void preInit() {
+      try {
+         for (Class<?> clazz : rb.converter.stub112.ElementDiscovery.findAnnotated(
+               $elClass.ModElement.Tag.class, this.getClass().getPackageName())) {
+            if (clazz.getSuperclass() == $elClass.ModElement.class) {
+               this.elements.add(($elClass.ModElement)clazz.getConstructor(this.getClass()).newInstance(this));
+            }
+         }
+      } catch (Exception e) {
+         e.printStackTrace();
+      }
+$sortLine
+"@
+            }, 1)
+            $t = $t2
+            if ($t -match 'ElementDiscovery\.findAnnotated') {
+                $t = $t -replace '(?m)^import\s+rb\.converter\.stub112\.ASMDataTable\.ASMData;\s*\r?\n', ''
+                if ($t -notmatch 'TODO_112_STAGE_C') {
+                    $t = $t -replace '(?m)^(package\s+[^;]+;\s*)',
+                        ('$1' + $nl + '// TODO_112_STAGE_C: element discovery via classpath scan; wire real RegisterEvent on @Mod.' + $nl)
+                }
+            }
+        }
+
+        # --- MCreator block elements: assignable block field + single-instance BlockItem ---
+        if ($t -match 'extends\s+LegacyBlock112' -or $t -match 'new\s+\w+\.BlockCustom') {
+            $t = $t -replace '(?m)^\s*@ObjectHolder\s*\([^)]*\)\s*\r?\n', ''
+            $t = $t -replace 'public\s+static\s+final\s+Block\s+block\s*=\s*null\s*;', 'public static Block block;'
+            $t = $t -replace 'public\s+static\s+final\s+Block\s+block\s*;', 'public static Block block;'
+
+            $pattern = 'this\.elements\.blocks\.add\(\(\)\s*->\s*new\s+([\w.]+)\.BlockCustom\(\)\);\s*this\.elements\.items\.add\(\(\)\s*->\s*\(Item\)new\s+ItemBlock\(block\)[^;]*;'
+            $t = [regex]::Replace($t, $pattern, {
+                param($m)
+                $cn = $m.Groups[1].Value
+                @"
+{
+         $cn.BlockCustom __stageC_b = new $cn.BlockCustom();
+         block = __stageC_b;
+         net.minecraft.world.item.BlockItem __stageC_i = new net.minecraft.world.item.BlockItem(__stageC_b, new net.minecraft.world.item.Item.Properties());
+         rb.converter.stub112.LegacyBlocks.rememberItem(__stageC_i, __stageC_b);
+         this.elements.blocks.add(() -> __stageC_b);
+         this.elements.items.add(() -> __stageC_i);
+      }
+"@
+            })
+
+            if ($t -match '__stageC_b' -and $t -notmatch 'TODO_112_STAGE_C') {
+                $t = $t -replace '(?m)^(package\s+[^;]+;\s*)',
+                    ('$1' + $nl + '// TODO_112_STAGE_C: single-instance block + real BlockItem; register via mod RegisterEvent.' + $nl)
+            }
+        }
+
+        # --- @Mod class: real RegisterEvent + creative tab dump into BUILDING_BLOCKS ---
+        if ($t -match '@Mod\s*\(' -and $t -match 'public\s+class\s+\w+') {
+            if ($t -notmatch 'TODO_112_STAGE_C_REG') {
+                # Ensure imports
+                $need = @(
+                    'import net.neoforged.neoforge.registries.RegisterEvent;',
+                    'import net.minecraft.core.registries.Registries;',
+                    'import net.minecraft.resources.Identifier;',
+                    'import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;',
+                    'import net.minecraft.world.item.CreativeModeTabs;',
+                    'import net.minecraft.world.item.BlockItem;'
+                )
+                foreach ($imp in $need) {
+                    if ($t -notmatch [regex]::Escape($imp)) {
+                        $t = $t -replace '(?m)^(package\s+[^;]+;\s*)', ('$1' + $nl + $imp + $nl)
+                    }
+                }
+
+                # Upgrade constructor body to register RegisterEvent + creative listener
+                if ($t -match 'modEventBus\.addListener\(this::commonSetup\)') {
+                    $t = $t -replace 'modEventBus\.addListener\(this::commonSetup\);', @'
+modEventBus.addListener(this::commonSetup);
+        modEventBus.addListener(this::onRegisterBlocksItems);
+        modEventBus.addListener(this::addCreative);
+'@
+                }
+
+                # Inject Stage C registration methods before commonSetup if missing
+                if ($t -notmatch 'onRegisterBlocksItems\s*\(') {
+                    $regMethods = @'
+
+    // TODO_112_STAGE_C_REG: real NeoForge RegisterEvent wiring from Elements supplier lists.
+    private void onRegisterBlocksItems(final RegisterEvent event) {
+        if (this.elements == null) return;
+        event.register(Registries.BLOCK, helper -> {
+            for (java.util.function.Supplier<Block> s : this.elements.getBlocks()) {
+                Block b = s.get();
+                if (b == null) continue;
+                String path = rb.converter.stub112.LegacyBlocks.resolveBlockPath(b);
+                if (path == null || path.isEmpty()) path = "block_" + System.identityHashCode(b);
+                helper.register(Identifier.fromNamespaceAndPath(MODID, path), b);
+            }
+        });
+        event.register(Registries.ITEM, helper -> {
+            for (java.util.function.Supplier<Item> s : this.elements.getItems()) {
+                Item i = s.get();
+                if (i == null) continue;
+                String path = rb.converter.stub112.LegacyBlocks.resolveItemPath(i);
+                if (path == null || path.isEmpty()) path = "item_" + System.identityHashCode(i);
+                helper.register(Identifier.fromNamespaceAndPath(MODID, path), i);
+            }
+        });
+    }
+
+    private void addCreative(final BuildCreativeModeTabContentsEvent event) {
+        if (this.elements == null) return;
+        if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS) {
+            for (java.util.function.Supplier<Item> s : this.elements.getItems()) {
+                Item i = s.get();
+                if (i != null) event.accept(i);
+            }
+        }
+    }
+'@
+                    if ($t -match 'private void commonSetup') {
+                        $t = $t -replace 'private void commonSetup', ($regMethods + $nl + '    private void commonSetup')
+                    }
+                    elseif ($t -match 'private void commonSetup\(final FMLCommonSetupEvent') {
+                        $t = $t -replace 'private void commonSetup\(final FMLCommonSetupEvent', ($regMethods + $nl + '    private void commonSetup(final FMLCommonSetupEvent')
+                    }
+                }
+
+                # Comment out obsolete stub RegistryEvent subscribers (avoid confusion)
+                $t = $t -replace '(?m)^(\s*)@SubscribeEvent\s*\r?\n(\s*)public void register(Blocks|Items|Biomes|Entities|Potions|Sounds)\b',
+                    ('$1// Stage C: legacy stub registry handler disabled' + $nl + '$1// @SubscribeEvent' + $nl + '$2public void register$3')
+            }
+        }
+
+        if ($t -ne $o) {
+            [System.IO.File]::WriteAllText($f.FullName, $t)
+            $touched++
+        }
+    }
+
+    # Stage C: convert 1.12 en_us.lang → en_us.json (best-effort)
+    $langFiles = Get-ChildItem (Join-Path $Root 'src\main\resources') -Recurse -Filter 'en_us.lang' -File -ErrorAction SilentlyContinue
+    foreach ($lf in $langFiles) {
+        $jsonPath = Join-Path $lf.DirectoryName 'en_us.json'
+        if (Test-Path $jsonPath) { continue }
+        $map = [ordered]@{}
+        foreach ($line in Get-Content -LiteralPath $lf.FullName) {
+            $trim = $line.Trim()
+            if (-not $trim -or $trim.StartsWith('#')) { continue }
+            $eq = $trim.IndexOf('=')
+            if ($eq -lt 1) { continue }
+            $k = $trim.Substring(0, $eq).Trim()
+            $v = $trim.Substring($eq + 1).Trim()
+            # Escape JSON string
+            $v = $v.Replace('\', '\\').Replace('"', '\"')
+            $map[$k] = $v
+        }
+        if ($map.Count -eq 0) { continue }
+        $sb = New-Object System.Text.StringBuilder
+        [void]$sb.AppendLine('{')
+        $i = 0
+        foreach ($k in $map.Keys) {
+            $i++
+            $comma = if ($i -lt $map.Count) { ',' } else { '' }
+            [void]$sb.AppendLine(('  "{0}": "{1}"{2}' -f $k, $map[$k], $comma))
+        }
+        [void]$sb.AppendLine('}')
+        [System.IO.File]::WriteAllText($jsonPath, $sb.ToString())
+        # Keep .lang as reference
+        Move-Item -LiteralPath $lf.FullName -Destination ($lf.FullName + '.112-reference') -Force -ErrorAction SilentlyContinue
+        $touched++
+    }
+
     return $touched
 }
 
@@ -1652,6 +1995,10 @@ Write-Step 'Stage B: 1.12 block/item API stubs (Material, EnumFacing, LegacyBloc
 $b = Invoke-112StageBBlockRewrites -Root $OutputPath
 Write-Ok "Stage B touched $b Java file(s)"
 
+Write-Step 'Stage C: element discovery + real RegisterEvent + BlockItem instances'
+$c = Invoke-112StageCRegistryPass -Root $OutputPath
+Write-Ok "Stage C touched $c Java file(s)"
+
 Write-Step 'Gradle wrapper'
 Install-WrapperIfPossible -Root $OutputPath
 
@@ -1664,32 +2011,30 @@ $report = @"
 - Output: $OutputPath
 - Target: Minecraft $MinecraftVersion / NeoForge $NeoVersion
 - Detected MC hint: $($meta.mc_hint)
-- Converter stage: **B (v0.3)** - Stage A lifecycle + Stage B block/item stubs; Hospital proof compileJava green via stubs
+- Converter stage: **C (v0.4)** - discovery + RegisterEvent + real BlockItem; block APIs still LegacyBlock112
 - Generated: $gen
 
 ## Automated
 
 ### Stage A
-1. Project copy + ModDevGradle 26.2 scaffold (Java 25)
-2. Package renames, Identifier, ServerPlayer/MobEffect, SideOnly/Dist
-3. stub112 FML lifecycle / GameRegistry / network simpleimpl
-4. IProxy stubs + modern @Mod(IEventBus) constructor
+1. Scaffold + package renames + modern @Mod(IEventBus)
+2. stub112 FML lifecycle / proxies
 
 ### Stage B
-5. stub112 Material, EnumFacing, AxisAlignedBB, IBlockAccess, properties, ItemBlock, CreativeTabs
-6. **LegacyBlock112** base for MCreator ``extends Block`` + common ``func_*`` / setRegistryName
-7. **LegacyBlockState** for 1.12 property fluent calls
-8. SoundType SRG field → modern SoundType constants
-9. Item.func_150898_a → LegacyItems helper
+3. LegacyBlock112 + Material/EnumFacing/ItemBlock compile stubs
 
-## You must still fix manually (post Stage B)
+### Stage C
+4. **ElementDiscovery** classpath scan (replaces empty ASMDataTable)
+5. Single-instance ``BlockCustom`` + real ``BlockItem`` in initElements
+6. **RegisterEvent** registers blocks/items under mod id paths from setRegistryName
+7. Items accepted into ``CreativeModeTabs.BUILDING_BLOCKS``
 
-- Real **DeferredRegister** / BlockBehaviour.Properties (stubs are no-ops at runtime)
-- BlockItem registration (ItemBlock stub is compile-only)
-- CreativeModeTab (CreativeTabs stub)
-- Client models / RenderType (BlockRenderLayer stub)
+## You must still fix manually (post Stage C)
+
+- BlockBehaviour.Properties / facing / collision (LegacyBlock112 is still a shim)
+- Proper CreativeModeTab per MCreator tab (currently all in BUILDING_BLOCKS)
+- Client models / RenderType / lang JSON
 - Tile entities / GUIs / packets
-- Remaining compile errors after gradlew compileJava
 - Runtime testing on NeoForge 26.2
 
 ## Next
@@ -1697,7 +2042,7 @@ $report = @"
 cd "$OutputPath"
 .\gradlew.bat compileJava --stacktrace
 
-Scaffold + Stage A/B success is not full compile or runtime success.
+Stage C improves **runtime registration**; block behaviour is not a full 1.12 port.
 "@
 [System.IO.File]::WriteAllText($reportPath, $report)
 Write-Ok "Wrote $reportPath"
