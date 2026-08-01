@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>RB-112-to-262-Java-Converter</AssemblyName>
+    <RootNamespace>RB.JavaConverter112</RootNamespace>
+    <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
+    <Product>RB 1.12 to 26.2 Java Converter</Product>
+    <Company>RobbieB1980</Company>
+    <Version>0.1.0</Version>
+    <FileVersion>0.1.0</FileVersion>
+    <InformationalVersion>0.1.0</InformationalVersion>
+    <Description>Convert Forge 1.12.2 Java mod jars/projects to NeoForge 26.2 scaffolds</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\Convert-112ToNeoForge262.ps1" Link="tools\Convert-112ToNeoForge262.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\Convert-JarToProject112.ps1" Link="tools\Convert-JarToProject112.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\Convert-OldJar112ToNeoForge262.ps1" Link="tools\Convert-OldJar112ToNeoForge262.ps1" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\README.md" Link="tools\README.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\docs\USAGE.md" Link="tools\docs\USAGE.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\docs\PIPELINE.md" Link="tools\docs\PIPELINE.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\LICENSE" Link="tools\LICENSE" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\CHANGELOG.md" Link="tools\CHANGELOG.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,82 @@
+# RB 1.12 → 26.2 Java Converter
+
+**Current release: v0.1.0 (experimental)**
+
+Dedicated converter for **Minecraft Forge 1.12.2** finished `.jar` mods (and 1.12-style source trees) toward a **NeoForge 26.2** ModDevGradle scaffold.
+
+This is **not** the same product as [LegacyJavaConverter](https://github.com/RobbieB1980/LegacyJavaConverter) (1.20.1 / 1.21.x → 26.2).  
+1.12.2 is a different generation (packages, FML lifecycle, registries). Expect a **scaffold + mechanical rewrites**, not an automatic full port.
+
+## What this tool does
+
+1. **Decompile** finished jars (Vineflower) into `src/main/java` + resources  
+2. Read **`mcmod.info`** (and best-effort package hints)  
+3. Write a **NeoForge 26.2** Gradle scaffold (Java 25)  
+4. Apply **1.12-era mechanical rewrites** (packages, ResourceLocation, stubs for removed APIs)  
+5. Emit **`MIGRATION_112_REPORT.md`** listing remaining work  
+
+## What it does **not** do (yet)
+
+- Full automatic compile of large 1.12 MCreator mods  
+- Proxy lifecycle → modern event bus (partial stubs only)  
+- GameRegistry / IWorldGenerator / IFuelHandler full rewrites  
+- Complete model / texture / datapack modernization  
+- Mixins without hand repair  
+
+## Requirements
+
+- Windows 10/11 (GUI)  
+- PowerShell 5.1+  
+- Java **17+** for Vineflower; **JDK 25** for compiling 26.2 projects  
+- Internet on first Gradle resolve  
+
+## GUI (recommended)
+
+```powershell
+.\scripts\Build-Release.ps1
+# then run dist\portable\RB-112-to-262-Java-Converter\RB-112-to-262-Java-Converter.exe
+```
+
+Or open the solution / project under `src\RB.JavaConverter112` and run.
+
+**Mode B — Finished `.jar`:** decompile → optional 26.2 scaffold  
+
+## CLI
+
+```powershell
+# Full pipeline: jar → decompiled intermediate → 26.2 scaffold
+.\Convert-OldJar112ToNeoForge262.ps1 `
+  -JarPath "D:\mods\Hospital-1.12.2.jar" `
+  -OutputPath "D:\mods\Hospital-26.2"
+
+# Decompile only
+.\Convert-JarToProject112.ps1 `
+  -JarPath "D:\mods\Hospital-1.12.2.jar" `
+  -OutputPath "D:\mods\Hospital-decompiled"
+
+# Project folder already decompiled
+.\Convert-112ToNeoForge262.ps1 `
+  -Path "D:\mods\Hospital-decompiled" `
+  -OutputPath "D:\mods\Hospital-26.2"
+```
+
+## After conversion
+
+```powershell
+cd "D:\mods\Hospital-26.2"
+.\gradlew.bat compileJava --stacktrace
+```
+
+Read `MIGRATION_112_REPORT.md` in the output. Install **only** jars from `build\libs` after a clean build — never the original 1.12.2 jar.
+
+## Related
+
+- [LegacyJavaConverter](https://github.com/RobbieB1980/LegacyJavaConverter) — Forge 1.20.1 / NeoForge 1.21.x → 26.2  
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+## Disclaimer
+
+Experimental migration assistant. Keep originals. Large 1.12 mods will need substantial manual work after the scaffold.
