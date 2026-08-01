@@ -3,13 +3,13 @@
   Create/update a GitHub Release and upload portable + setup artifacts from dist/.
 
 .EXAMPLE
-  .\scripts\Publish-GitHubRelease.ps1 -Tag v0.1.0
+  .\scripts\Publish-GitHubRelease.ps1 -Tag v0.2.0
 #>
 [CmdletBinding()]
 param(
-    [string]$Tag = 'v0.1.0',
+    [string]$Tag = 'v0.2.0',
     [string]$Repo = 'RobbieB1980/1.12-to-26.2-Java-Converter',
-    [string]$Name = 'RB 1.12 to 26.2 Java Converter 0.1.0'
+    [string]$Name = 'RB 1.12 to 26.2 Java Converter 0.2.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,6 +39,13 @@ $notes = @"
 
 Experimental converter: **Forge 1.12.2** jars/projects to **NeoForge 26.2** scaffolds.
 
+### Stage A (v0.2)
+
+- Stub IProxy/ClientProxy/ServerProxy; FML*InitializationEvent → stub112
+- Modern ``@Mod("id")`` + ``IEventBus`` constructor + ``FMLCommonSetupEvent``
+- ServerPlayer / MobEffect rename fixes; GameRegistry / IGuiHandler / ModelRegistry stubs
+- Hospital proof: unique compile errors **5472 → 4009**; lifecycle file errors **137 → 0**
+
 ### Downloads
 
 | File | Description |
@@ -54,8 +61,8 @@ Experimental converter: **Forge 1.12.2** jars/projects to **NeoForge 26.2** scaf
 
 ### Scope (honest)
 
-- Decompile + mcmod.info detection + 1.12 package renames + 26.2 Gradle scaffold
-- **Not** a full automatic port of large 1.12 MCreator mods
+- Decompile + mcmod.info + Stage A lifecycle stubs + 26.2 Gradle scaffold
+- **Not** a full automatic port of large 1.12 MCreator mods (block APIs remain Stage B)
 
 Separate from [LegacyJavaConverter](https://github.com/RobbieB1980/LegacyJavaConverter) (1.20.1 / 1.21.x).
 "@

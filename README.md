@@ -1,6 +1,6 @@
 # RB 1.12 → 26.2 Java Converter
 
-**Current release: v0.1.0 (experimental)**
+**Current release: v0.2.0 (experimental — Stage A lifecycle)**
 
 Dedicated converter for **Minecraft Forge 1.12.2** finished `.jar` mods (and 1.12-style source trees) toward a **NeoForge 26.2** ModDevGradle scaffold.
 
@@ -15,11 +15,18 @@ This is **not** the same product as [LegacyJavaConverter](https://github.com/Rob
 4. Apply **1.12-era mechanical rewrites** (packages, ResourceLocation, stubs for removed APIs)  
 5. Emit **`MIGRATION_112_REPORT.md`** listing remaining work  
 
+## Stage A (v0.2) includes
+
+- Empty **IProxy / ClientProxy / ServerProxy** stubs (no FML event types)  
+- **stub112** compile shims for FML lifecycle, GameRegistry, IGuiHandler, ModelRegistryEvent, simpleimpl network  
+- Modern **@Mod("id")** + **IEventBus** constructor + `FMLCommonSetupEvent` listener  
+- Fixes for bad renames: **ServerPlayer**, **MobEffect**, Side→Dist  
+
 ## What it does **not** do (yet)
 
 - Full automatic compile of large 1.12 MCreator mods  
-- Proxy lifecycle → modern event bus (partial stubs only)  
-- GameRegistry / IWorldGenerator / IFuelHandler full rewrites  
+- DeferredRegister rewrites for every block/item (GameRegistry stubs are no-ops)  
+- 1.12 block Material / properties / ItemBlock / SRG `func_*` modernization (Stage B)  
 - Complete model / texture / datapack modernization  
 - Mixins without hand repair  
 
