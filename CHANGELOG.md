@@ -15,7 +15,8 @@
   - Flag removed APIs (`IFuelHandler`, `IWorldGenerator`, `GameRegistry`, etc.)
   - Avoid wrong `fml.common.event` → NeoForge renames that do not exist
 - Windows GUI (Mode B jar; Mode A project folder)
-- Portable build script (`scripts\Build-Release.ps1`)
+- **Setup installer** (same pattern as Legacy converter): Install / Uninstall, desktop + Start Menu shortcuts, `Uninstall.cmd`, Apps & features registration, app icon
+- Portable build + Setup via `scripts\Build-Release.ps1`
 - Docs: pipeline limits and usage
 
 ### Proven intent

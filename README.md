@@ -30,16 +30,34 @@ This is **not** the same product as [LegacyJavaConverter](https://github.com/Rob
 - Java **17+** for Vineflower; **JDK 25** for compiling 26.2 projects  
 - Internet on first Gradle resolve  
 
-## GUI (recommended)
+## Downloads (Windows)
+
+From [GitHub Releases](https://github.com/RobbieB1980/1.12-to-26.2-Java-Converter/releases):
+
+| Artifact | Description |
+|----------|-------------|
+| `RB-112-to-262-Java-Converter-Setup.exe` | GUI installer (Install + Uninstall; embeds portable package) |
+| `RB-112-to-262-Java-Converter-Portable.zip` | Portable folder — unzip and run `Start-Converter.bat` |
+
+Build locally:
 
 ```powershell
 .\scripts\Build-Release.ps1
-# then run dist\portable\RB-112-to-262-Java-Converter\RB-112-to-262-Java-Converter.exe
 ```
 
-Or open the solution / project under `src\RB.JavaConverter112` and run.
+Outputs land in `dist\` (portable folder, portable ZIP, Setup EXE).
+
+### Install / uninstall
+
+- Default install: `%LOCALAPPDATA%\RB-112-to-262-Java-Converter` (no admin)
+- Uninstall: Setup **Uninstall** button, Start Menu entry, `Uninstall.cmd`, or Windows **Apps & features**
+
+## GUI
 
 **Mode B — Finished `.jar`:** decompile → optional 26.2 scaffold  
+**Mode A — Project folder:** decompiled/source tree with `src/`  
+
+Or: `.\Launch-GUI.bat` for debug runs without packaging.
 
 ## CLI
 
