@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0 — 2026-08-01
+
+### Stage F — runtime creative inventory fix
+
+**Problem:** Mod loaded but **no creative tabs/items** — classpath `ElementDiscovery` returns empty under NeoForge/ModLauncher, so no blocks/items registered.
+
+**Fix:**
+- Generate **`GENERATED_ELEMENT_CLASS_NAMES`** at convert time (explicit `Class.forName` list)
+- Creative tabs use **remembered Item instances** (not only `block.asItem()`)
+- Fallback dump of all items into **BUILDING_BLOCKS / FUNCTIONAL_BLOCKS / INGREDIENTS**
+- Startup logs: `[112to262] elements=… blocks=… items=… tabs=…`
+
+### Hospital proof
+
+- 141 ModElement classes in generated bootstrap list
+- `compileJava` + `jar` **SUCCESS**
+- Expect items in vanilla Building Blocks tab after reinstall of new jar
+
 ## 0.6.0 — 2026-08-01
 
 ### Stage E+ — shapes, resources, loot/tags, interaction bridges

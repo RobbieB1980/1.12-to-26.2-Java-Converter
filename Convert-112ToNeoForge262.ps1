@@ -835,11 +835,12 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 
-/** Stage B/D: 1.12 CreativeTabs bridge toward CreativeModeTab. */
+/** Stage B/D/F: 1.12 CreativeTabs bridge toward CreativeModeTab. */
 public class CreativeTabs {
     private static final List<CreativeTabs> ALL = new ArrayList<>();
     public final String tabLabel;
     private final Set<Block> blocks = new LinkedHashSet<>();
+    private final Set<Item> items = new LinkedHashSet<>();
     private Supplier<ItemStack> iconOverride;
 
     public CreativeTabs(String label) {
@@ -855,6 +856,11 @@ public class CreativeTabs {
         if (iconOverride != null) {
             ItemStack s = iconOverride.get();
             if (s != null && !s.isEmpty()) return s;
+        }
+        for (Item it : items) {
+            if (it != null && it != net.minecraft.world.item.Items.AIR) {
+                return new ItemStack(it);
+            }
         }
         for (Block b : blocks) {
             Item i = b.asItem();
@@ -874,6 +880,10 @@ public class CreativeTabs {
         String p = tabLabel.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_]", "_");
         if (p.startsWith("tab")) p = p.substring(3);
         if (p.isEmpty()) p = "misc";
+        if (p.isEmpty()) p = "misc";
+        // avoid empty / illegal paths
+        while (p.startsWith("_")) p = p.substring(1);
+        if (p.isEmpty()) p = "misc";
         return p;
     }
 
@@ -881,7 +891,12 @@ public class CreativeTabs {
         if (block != null) blocks.add(block);
     }
 
+    public void addItem(Item item) {
+        if (item != null) items.add(item);
+    }
+
     public Set<Block> getBlocks() { return Collections.unmodifiableSet(blocks); }
+    public Set<Item> getItems() { return Collections.unmodifiableSet(items); }
 
     public void setIconSupplier(Supplier<ItemStack> icon) { this.iconOverride = icon; }
 }
@@ -1042,6 +1057,11 @@ public final class LegacyBlocks {
     public static void rememberItem(Item item, Block block) {
         if (item == null) return;
         ITEM_IDS.put(item, resolveBlockPath(block));
+        // Stage F: attach item to the block's creative tab (asItem() is unreliable pre-link)
+        CreativeTabs tab = BLOCK_TABS.get(block);
+        if (tab != null) {
+            tab.addItem(item);
+        }
     }
 
     public static void assignTab(Block block, Object tab) {
@@ -2190,6 +2210,193 @@ function Invoke-112StageEPlusPass {
     return $touched
 }
 
+function Invoke-112StageFRuntimeFixPass {
+    param([string]$Root)
+    $javaRoot = Join-Path $Root 'src\main\java'
+    if (-not (Test-Path $javaRoot)) { return 0 }
+    $touched = 0
+    $nl = [Environment]::NewLine
+
+    # Collect fully-qualified class names of files annotated with ModElement.Tag
+    $elementFqns = New-Object System.Collections.Generic.List[string]
+    $javaFiles = Get-ChildItem $javaRoot -Recurse -Filter '*.java' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '[\\/]rb[\\/]converter[\\/]stub112[\\/]' }
+    foreach ($jf in $javaFiles) {
+        $raw = [System.IO.File]::ReadAllText($jf.FullName)
+        if ($raw -notmatch 'ModElement\.Tag') { continue }
+        if ($raw -notmatch '(?m)^public\s+class\s+(\w+)') { continue }
+        $simple = $Matches[1]
+        # skip Elements* host classes themselves
+        if ($simple -match '^Elements') { continue }
+        $pkg = $null
+        if ($raw -match '(?m)^package\s+([\w.]+)\s*;') { $pkg = $Matches[1] }
+        if (-not $pkg) { continue }
+        $elementFqns.Add("$pkg.$simple") | Out-Null
+    }
+    $elementFqns = @($elementFqns | Sort-Object -Unique)
+    Write-Info "Stage F: found $($elementFqns.Count) ModElement class(es) for explicit bootstrap"
+
+    foreach ($f in $javaFiles) {
+        $t = [System.IO.File]::ReadAllText($f.FullName)
+        $o = $t
+        $name = $f.Name
+
+        # --- Elements host: inject GENERATED_ELEMENT_CLASS_NAMES + reliable preInit loader ---
+        if ($name -match '^Elements\w+\.java$') {
+            $elClass = [IO.Path]::GetFileNameWithoutExtension($name)
+            $arrLines = ($elementFqns | ForEach-Object { '      "' + $_ + '"' }) -join ",$nl"
+            if (-not $arrLines) { $arrLines = '      // (no tagged elements found at convert time)' }
+
+            # Insert / replace generated array field
+            $genField = @"
+/** Stage F: converter-generated explicit element list (ModLauncher-safe). */
+   public static final String[] GENERATED_ELEMENT_CLASS_NAMES = new String[] {
+$arrLines
+   };
+"@
+            if ($t -match 'GENERATED_ELEMENT_CLASS_NAMES') {
+                $t = [regex]::Replace($t,
+                    '(?s)/\*\* Stage F:.*?public\s+static\s+final\s+String\s*\[\s*\]\s*GENERATED_ELEMENT_CLASS_NAMES\s*=\s*new\s+String\s*\[\s*\]\s*\{.*?\};|public\s+static\s+final\s+String\s*\[\s*\]\s*GENERATED_ELEMENT_CLASS_NAMES\s*=\s*new\s+String\s*\[\s*\]\s*\{.*?\};',
+                    $genField.Trim())
+            }
+            else {
+                $t = $t -replace ("(public\s+class\s+" + [regex]::Escape($elClass) + "\s*\{)"),
+                    ('$1' + $nl + '   ' + $genField.Trim() + $nl)
+            }
+
+            # Rewrite preInit discovery to prefer generated list
+            $t = [regex]::Replace($t, '(?s)public\s+void\s+preInit\s*\(\s*\)\s*\{.*?(\r?\n\s*Collections\.sort\(this\.elements\);)', {
+                param($m)
+                $sortLine = $m.Groups[1].Value
+                @"
+public void preInit() {
+      int loaded = 0;
+      try {
+         for (String className : GENERATED_ELEMENT_CLASS_NAMES) {
+            if (className == null || className.isEmpty()) continue;
+            Class<?> clazz = Class.forName(className);
+            if (clazz.getSuperclass() == $elClass.ModElement.class) {
+               this.elements.add(($elClass.ModElement)clazz.getConstructor(this.getClass()).newInstance(this));
+               loaded++;
+            }
+         }
+      } catch (Exception e) {
+         System.err.println("[112to262] Generated element bootstrap failed: " + e);
+         e.printStackTrace();
+      }
+      if (loaded == 0) {
+         System.err.println("[112to262] Generated list loaded 0 elements; falling back to classpath scan");
+         try {
+            for (Class<?> clazz : rb.converter.stub112.ElementDiscovery.findAnnotated(
+                  $elClass.ModElement.Tag.class, this.getClass().getPackageName())) {
+               if (clazz.getSuperclass() == $elClass.ModElement.class) {
+                  this.elements.add(($elClass.ModElement)clazz.getConstructor(this.getClass()).newInstance(this));
+               }
+            }
+         } catch (Exception e) {
+            System.err.println("[112to262] Classpath element scan failed: " + e);
+            e.printStackTrace();
+         }
+      }
+$sortLine
+"@
+            }, 1)
+
+            # After initElements, log counts (inject once after forEach initElements)
+            if ($t -notmatch '\[112to262\] elements=') {
+                $t = $t -replace '(this\.elements\.forEach\([^;]+initElements\)\s*;)',
+                    ('$1' + $nl +
+                     '      System.out.println("[112to262] elements=" + this.elements.size()' +
+                     ' + " blocks=" + this.blocks.size() + " items=" + this.items.size()' +
+                     ' + " tabs=" + rb.converter.stub112.CreativeTabs.allTabs().size());')
+            }
+
+            if ($t -notmatch 'TODO_112_STAGE_F') {
+                $t = $t -replace '(?m)^(package\s+[^;]+;\s*)',
+                    ('$1' + $nl + '// TODO_112_STAGE_F: explicit GENERATED_ELEMENT_CLASS_NAMES bootstrap for runtime.' + $nl)
+            }
+        }
+
+        # --- @Mod: creative dump fallback + better tab displayItems + logging ---
+        if ($t -match '@Mod\s*\(' -and $t -match 'onRegisterBlocksItems') {
+            # displayItems: prefer tab items
+            $t = $t -replace '(?s)\.displayItems\(\(params,\s*out\)\s*->\s*\{[\s\S]*?\}\)', @'
+.displayItems((params, out) -> {
+                            for (Item it : tabRef.getItems()) {
+                                if (it != null && it != net.minecraft.world.item.Items.AIR) out.accept(it);
+                            }
+                            if (tabRef.getItems().isEmpty()) {
+                                for (Block b : tabRef.getBlocks()) {
+                                    Item it = b.asItem();
+                                    if (it != null && it != net.minecraft.world.item.Items.AIR) out.accept(it);
+                                }
+                            }
+                        })
+'@
+
+            # Restore addCreative fallback so items always appear somewhere
+            $t = $t -replace '(?s)private void addCreative\(final BuildCreativeModeTabContentsEvent event\)\s*\{[\s\S]*?\n    \}', @'
+private void addCreative(final BuildCreativeModeTabContentsEvent event) {
+        if (this.elements == null) return;
+        // Stage F: always expose converted items in vanilla tabs as a safety net
+        if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS
+                || event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS
+                || event.getTabKey() == CreativeModeTabs.INGREDIENTS) {
+            for (java.util.function.Supplier<Item> s : this.elements.getItems()) {
+                Item i = s.get();
+                if (i != null && i != net.minecraft.world.item.Items.AIR) {
+                    event.accept(i);
+                }
+            }
+        }
+    }
+'@
+
+            # commonSetup logging
+            if ($t -match 'private void commonSetup' -and $t -notmatch '\[112to262\] commonSetup') {
+                $t = $t -replace '(private void commonSetup\(final FMLCommonSetupEvent event\)\s*\{\s*)',
+                    ('$1' + $nl +
+                     '        System.out.println("[112to262] commonSetup mod=" + MODID' +
+                     ' + " elements=" + (elements == null ? -1 : elements.getElements().size())' +
+                     ' + " blocks=" + (elements == null ? -1 : elements.getBlocks().size())' +
+                     ' + " items=" + (elements == null ? -1 : elements.getItems().size())' +
+                     ' + " tabs=" + rb.converter.stub112.CreativeTabs.allTabs().size());' + $nl)
+            }
+
+            # Do not swallow preInit failures silently
+            $t = $t -replace 'try\s*\{\s*this\.elements\.preInit\(\);\s*\}\s*catch\s*\(\s*Throwable\s+ignored\s*\)\s*\{\s*/\*\s*Stage A soft-call\s*\*/\s*\}',
+                @'
+try {
+            this.elements.preInit();
+        } catch (Throwable t) {
+            System.err.println("[112to262] preInit failed: " + t);
+            t.printStackTrace();
+        }
+'@
+
+            # RegisterEvent logging
+            if ($t -notmatch '\[112to262\] RegisterEvent BLOCK') {
+                $t = $t -replace '(event\.register\(Registries\.BLOCK,\s*helper\s*->\s*\{)',
+                    ('$1' + $nl + '            int __bc = 0;')
+                $t = $t -replace '(helper\.register\(Identifier\.fromNamespaceAndPath\(MODID,\s*path\),\s*b\);)',
+                    ('$1 __bc++;')
+                # close log after block register consumer - approximate after first register block block
+            }
+
+            if ($t -notmatch 'TODO_112_STAGE_F') {
+                $t = $t -replace '(?m)^(package\s+[^;]+;\s*)',
+                    ('$1' + $nl + '// TODO_112_STAGE_F: creative inventory + explicit element bootstrap.' + $nl)
+            }
+        }
+
+        if ($t -ne $o) {
+            [System.IO.File]::WriteAllText($f.FullName, $t)
+            $touched++
+        }
+    }
+    return $touched
+}
+
 function Invoke-112ProxyStubPass {
     param([string]$Root)
     $javaRoot = Join-Path $Root 'src\main\java'
@@ -2703,6 +2910,10 @@ Write-Step 'Stage E+: shapes, blockstates/textures, loot/tags, redstone/use brid
 $e = Invoke-112StageEPlusPass -Root $OutputPath -ModId $meta.mod_id
 Write-Ok "Stage E+ touched $e path(s)"
 
+Write-Step 'Stage F: explicit element bootstrap + creative inventory fix'
+$f = Invoke-112StageFRuntimeFixPass -Root $OutputPath
+Write-Ok "Stage F touched $f file(s)"
+
 Write-Step 'Gradle wrapper'
 Install-WrapperIfPossible -Root $OutputPath
 
@@ -2715,36 +2926,30 @@ $report = @"
 - Output: $OutputPath
 - Target: Minecraft $MinecraftVersion / NeoForge $NeoVersion
 - Detected MC hint: $($meta.mc_hint)
-- Converter stage: **E+ (v0.6)** - shapes, resources, loot/tags, interaction bridges
+- Converter stage: **F (v0.7)** - explicit element bootstrap + creative inventory
 - Generated: $gen
 
 ## Automated
 
-### Stage A–D
-1. Scaffold → registration → Properties/facing/tabs
+### Stage A–E
+1. Scaffold → registration → Properties/facing → resources/loot
 
-### Stage E+
-2. **Voxel shapes** from 1.12 AxisAlignedBB (0..1) via ``setLegacyShape``
-3. **Blockstate** modernization (``normal``→``""``, model ``mod:block/name``)
-4. **Textures** ``blocks/`` → ``block/`` (folder + references)
-5. **Loot tables** self-drop per block; **mineable/pickaxe** tag
-6. **Redstone** ``func_180656_a``/``func_176211_b`` → getSignal/getDirectSignal
-7. **Use/neighbor** reflection bridges on LegacyBlock112 to legacy ``func_*`` methods
+### Stage F (runtime creative fix)
+2. **Generated element class list** (``GENERATED_ELEMENT_CLASS_NAMES``) — reliable under ModLauncher
+3. Creative tabs accept **remembered Items** (not only ``block.asItem()``)
+4. Fallback: dump all items into **BUILDING_BLOCKS** + **INGREDIENTS**
+5. Startup logging of element/block/item/tab counts
 
-## You must still fix manually (post Stage E+)
+## You must still fix manually
 
-- Facing-dependent multi-AABB shapes
-- GUIs / menus / screens (1.12 IGuiHandler era)
-- Tile entities / block entities
-- Full packet modernization
-- Recipes beyond self-drop loot
-- Runtime playtest (``runClient``)
+- Facing-dependent multi-AABB shapes, GUIs/BE/packets, recipes
+- Full playtest polish on NeoForge 26.2
 
 ## Next
 
 cd "$OutputPath"
-.\gradlew.bat compileJava --stacktrace
-.\gradlew.bat runClient
+.\gradlew.bat jar
+# install build/libs/*.jar into NeoForge 26.2 mods folder
 "@
 [System.IO.File]::WriteAllText($reportPath, $report)
 Write-Ok "Wrote $reportPath"

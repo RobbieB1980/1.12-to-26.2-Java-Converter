@@ -32,6 +32,7 @@
 - **Stage C:** ElementDiscovery, single-instance BlockItem, real `RegisterEvent`, lang JSON
 - **Stage D:** LegacyProps Properties, horizontal FACING, cutout render_type, CreativeModeTabs
 - **Stage E+:** AABB→shapes, blockstate/texture modernization, loot/tags, use/neighbor/redstone bridges
+- **Stage F:** explicit `GENERATED_ELEMENT_CLASS_NAMES` bootstrap + creative inventory fallbacks
 - Map FML lifecycle / GameRegistry leftovers to stubs where still needed
 - Write `MIGRATION_112_REPORT.md`
 

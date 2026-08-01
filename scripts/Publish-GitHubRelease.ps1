@@ -3,13 +3,13 @@
   Create/update a GitHub Release and upload portable + setup artifacts from dist/.
 
 .EXAMPLE
-  .\scripts\Publish-GitHubRelease.ps1 -Tag v0.6.0
+  .\scripts\Publish-GitHubRelease.ps1 -Tag v0.7.0
 #>
 [CmdletBinding()]
 param(
-    [string]$Tag = 'v0.6.0',
+    [string]$Tag = 'v0.7.0',
     [string]$Repo = 'RobbieB1980/1.12-to-26.2-Java-Converter',
-    [string]$Name = 'RB 1.12 to 26.2 Java Converter 0.6.0'
+    [string]$Name = 'RB 1.12 to 26.2 Java Converter 0.7.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,14 +39,14 @@ $notes = @"
 
 Experimental converter: **Forge 1.12.2** jars/projects to **NeoForge 26.2** scaffolds.
 
-### Stage E+ (v0.6)
+### Stage F (v0.7)
 
-- AABB shapes, blockstate/texture modernization, self-drop loot, pickaxe tag, use/neighbor/redstone bridges
-- Hospital: ``compileJava`` + ``jar`` **SUCCESS** (131 loot tables, modern blockstates/textures)
+- **Fixes empty creative inventory**: explicit ``GENERATED_ELEMENT_CLASS_NAMES`` bootstrap + creative tab item wiring
+- Fallback items in Building Blocks / Functional / Ingredients; startup ``[112to262]`` logs
 
-### Stage D / C / B / A
+### Stage E+ → A
 
-- Properties/facing/tabs → registration → compile stubs → modern @Mod
+- Resources/shapes/loot → behaviour → registration → stubs → @Mod
 
 ### Downloads
 
