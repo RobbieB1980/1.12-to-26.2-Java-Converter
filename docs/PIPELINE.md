@@ -30,6 +30,7 @@
 - **Stage A:** inject `rb.converter.stub112`, stub proxies, modern `@Mod` + IEventBus ctor
 - **Stage B:** LegacyBlock112, Material/EnumFacing/ItemBlock/properties, Level SRG helpers
 - **Stage C:** ElementDiscovery, single-instance BlockItem, real `RegisterEvent`, lang JSON
+- **Stage D:** LegacyProps Properties, horizontal FACING, cutout render_type, CreativeModeTabs
 - Map FML lifecycle / GameRegistry leftovers to stubs where still needed
 - Write `MIGRATION_112_REPORT.md`
 

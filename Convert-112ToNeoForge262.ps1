@@ -824,17 +824,66 @@ public class ItemBlock extends Item {
         'CreativeTabs.java' = @'
 package rb.converter.stub112;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.function.Supplier;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
 
-/** Stage B stub: 1.12 CreativeTabs (modern: CreativeModeTab). */
+/** Stage B/D: 1.12 CreativeTabs bridge toward CreativeModeTab. */
 public class CreativeTabs {
+    private static final List<CreativeTabs> ALL = new ArrayList<>();
     public final String tabLabel;
-    public CreativeTabs(String label) { this.tabLabel = label; }
-    public ItemStack func_78016_d() { return ItemStack.EMPTY; }
+    private final Set<Block> blocks = new LinkedHashSet<>();
+    private Supplier<ItemStack> iconOverride;
+
+    public CreativeTabs(String label) {
+        this.tabLabel = label == null ? "tab" : label;
+        ALL.add(this);
+    }
+
+    public static List<CreativeTabs> allTabs() {
+        return Collections.unmodifiableList(ALL);
+    }
+
+    public ItemStack func_78016_d() {
+        if (iconOverride != null) {
+            ItemStack s = iconOverride.get();
+            if (s != null && !s.isEmpty()) return s;
+        }
+        for (Block b : blocks) {
+            Item i = b.asItem();
+            if (i != null && i != net.minecraft.world.item.Items.AIR) {
+                return new ItemStack(i);
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+
     public ItemStack createIcon() { return func_78016_d(); }
     public boolean hasSearchBar() { return false; }
     public CreativeTabs func_78025_a(String texture) { return this; }
     public String getTabLabel() { return tabLabel; }
+
+    public String registryPath() {
+        String p = tabLabel.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_]", "_");
+        if (p.startsWith("tab")) p = p.substring(3);
+        if (p.isEmpty()) p = "misc";
+        return p;
+    }
+
+    public void addBlock(Block block) {
+        if (block != null) blocks.add(block);
+    }
+
+    public Set<Block> getBlocks() { return Collections.unmodifiableSet(blocks); }
+
+    public void setIconSupplier(Supplier<ItemStack> icon) { this.iconOverride = icon; }
 }
 '@
         'LegacyItems.java' = @'
@@ -984,14 +1033,27 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 
-/** Stage C helpers: resolve registry paths for LegacyBlock112 / BlockItem pairs. */
+/** Stage C/D helpers: registry paths + creative tab assignment. */
 public final class LegacyBlocks {
     private static final Map<Object, String> ITEM_IDS = new IdentityHashMap<>();
+    private static final Map<Block, CreativeTabs> BLOCK_TABS = new IdentityHashMap<>();
     private LegacyBlocks() {}
 
     public static void rememberItem(Item item, Block block) {
         if (item == null) return;
         ITEM_IDS.put(item, resolveBlockPath(block));
+    }
+
+    public static void assignTab(Block block, Object tab) {
+        if (block == null) return;
+        if (tab instanceof CreativeTabs ct) {
+            BLOCK_TABS.put(block, ct);
+            ct.addBlock(block);
+        }
+    }
+
+    public static CreativeTabs tabOf(Block block) {
+        return BLOCK_TABS.get(block);
     }
 
     public static String resolveBlockPath(Block block) {
@@ -1018,17 +1080,123 @@ public final class LegacyBlocks {
     }
 }
 '@
+        'LegacyProps.java' = @'
+package rb.converter.stub112;
+
+import net.minecraft.world.level.block.SoundType;
+import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.material.MapColor;
+
+/** Stage D: fold 1.12 Material + hardness/light/sound into BlockBehaviour.Properties. */
+public final class LegacyProps {
+    private LegacyProps() {}
+
+    public static BlockBehaviour.Properties of(Material material, SoundType sound,
+                                               float hardness, float resistance,
+                                               float light01, int lightOpacity) {
+        SoundType s = sound != null ? sound : SoundType.STONE;
+        BlockBehaviour.Properties p = BlockBehaviour.Properties.of()
+                .mapColor(mapColor(material))
+                .sound(s)
+                .strength(Math.max(0f, hardness), Math.max(0f, resistance));
+        if (light01 > 0f) {
+            int lvl = Math.max(0, Math.min(15, Math.round(light01 * 15f)));
+            p = p.lightLevel(state -> lvl);
+        }
+        if (lightOpacity <= 0) {
+            p = p.noOcclusion();
+        }
+        return p;
+    }
+
+    public static BlockBehaviour.Properties fromMaterial(Material material) {
+        return of(material, SoundType.STONE, 1.0f, 1.0f, 0f, 255);
+    }
+
+    private static MapColor mapColor(Material material) {
+        if (material == null) return MapColor.STONE;
+        // Common 1.12 Material SRG statics used by MCreator
+        if (material == Material.field_151573_f || material == Material.IRON) return MapColor.METAL;
+        if (material == Material.field_151575_d || material == Material.WOOD) return MapColor.WOOD;
+        if (material == Material.field_151576_e || material == Material.ROCK) return MapColor.STONE;
+        if (material == Material.field_151578_c) return MapColor.DIRT;
+        if (material == Material.field_151583_m) return MapColor.WOOL;
+        if (material == Material.field_151584_j) return MapColor.SAND;
+        if (material == Material.field_151592_s) return MapColor.NONE;
+        return MapColor.STONE;
+    }
+}
+'@
+        'LegacyHorizontalBlock112.java' = @'
+package rb.converter.stub112;
+
+import net.minecraft.core.Direction;
+import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
+
+/** Stage D: real horizontal FACING state for MCreator BlockHorizontal-style blocks. */
+public class LegacyHorizontalBlock112 extends LegacyBlock112 {
+    public static final EnumProperty<Direction> FACING = BlockStateProperties.HORIZONTAL_FACING;
+
+    public LegacyHorizontalBlock112(Material material) {
+        super(LegacyProps.fromMaterial(material));
+        finishFacingDefault();
+    }
+
+    public LegacyHorizontalBlock112(BlockBehaviour.Properties properties) {
+        super(properties);
+        finishFacingDefault();
+    }
+
+    private void finishFacingDefault() {
+        this.registerDefaultState(this.stateDefinition.any().setValue(FACING, Direction.NORTH));
+    }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        builder.add(FACING);
+    }
+
+    @Override
+    public BlockState getStateForPlacement(BlockPlaceContext context) {
+        return this.defaultBlockState().setValue(FACING, context.getHorizontalDirection().getOpposite());
+    }
+
+    @Override
+    protected BlockState rotate(BlockState state, Rotation rotation) {
+        return state.setValue(FACING, rotation.rotate(state.getValue(FACING)));
+    }
+
+    @Override
+    protected BlockState mirror(BlockState state, Mirror mirror) {
+        return state.rotate(mirror.getRotation(state.getValue(FACING)));
+    }
+}
+'@
         'LegacyBlock112.java' = @'
 package rb.converter.stub112;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
- * Stage B: 1.12-shaped Block base so MCreator BlockCustom classes compile.
- * Not a real port - registry/hardness/light calls are no-ops or Properties defaults.
+ * Stage B/D: 1.12-shaped Block base.
+ * Stage D applies light/occlusion/collision/tab side-effects for remaining setter calls.
  */
 public class LegacyBlock112 extends Block {
     /** 1.12 NULL_AABB */
@@ -1037,9 +1205,12 @@ public class LegacyBlock112 extends Block {
 
     protected final LegacyBlockState field_176227_L = new LegacyBlockState();
     private String legacyRegistryName;
+    private boolean legacyNoCollision;
+    private boolean legacyCutout;
+    private int legacyLight = 0;
 
     public LegacyBlock112(Material material) {
-        super(BlockBehaviour.Properties.of());
+        super(LegacyProps.fromMaterial(material));
     }
 
     public LegacyBlock112(BlockBehaviour.Properties properties) {
@@ -1065,31 +1236,57 @@ public class LegacyBlock112 extends Block {
         return legacyRegistryName;
     }
 
+    /** Stage D: empty collision (1.12 NULL_AABB style). */
+    public void setLegacyNoCollision() {
+        this.legacyNoCollision = true;
+    }
+
+    public void setLegacyCutout() {
+        this.legacyCutout = true;
+    }
+
+    public boolean isLegacyCutout() {
+        return legacyCutout;
+    }
+
     /** setUnlocalizedName */
     public void func_149663_c(String name) { /* no-op */ }
-    /** setSoundType */
-    public void func_149672_a(SoundType sound) { /* no-op */ }
+    /** setSoundType - preferred via LegacyProps; keep as soft no-op after super */
+    public void func_149672_a(SoundType sound) { /* baked into Properties when using LegacyProps.of */ }
     public void func_149672_a(Object sound) { /* no-op */ }
     /** setHardness */
-    public void func_149711_c(float hardness) { /* no-op */ }
+    public void func_149711_c(float hardness) { /* baked into Properties when using LegacyProps.of */ }
     /** setResistance */
-    public void func_149752_b(float resistance) { /* no-op */ }
-    /** setLightLevel */
-    public void func_149715_a(float value) { /* no-op */ }
+    public void func_149752_b(float resistance) { /* baked into Properties when using LegacyProps.of */ }
+    /** setLightLevel (0..1 in 1.12) */
+    public void func_149715_a(float value) {
+        this.legacyLight = Math.max(0, Math.min(15, Math.round(value * 15f)));
+    }
     /** setLightOpacity */
-    public void func_149713_g(int opacity) { /* no-op */ }
+    public void func_149713_g(int opacity) {
+        if (opacity <= 0) {
+            // noOcclusion is best applied via Properties; mark cutout-ish
+            this.legacyCutout = true;
+        }
+    }
     /** setCreativeTab */
-    public void func_149647_a(Object tab) { /* no-op */ }
+    public void func_149647_a(Object tab) {
+        LegacyBlocks.assignTab(this, tab);
+    }
     /** setDefaultState */
-    public void func_180632_j(Object state) { /* no-op */ }
+    public void func_180632_j(Object state) { /* horizontal default handled by LegacyHorizontalBlock112 */ }
 
-    /** getDefaultState */
+    /** getDefaultState (legacy fluent stub) */
     public LegacyBlockState func_176223_P() { return field_176227_L; }
 
-    public BlockRenderLayer func_180664_k() { return BlockRenderLayer.SOLID; }
-    public AxisAlignedBB func_180646_a(Object state, IBlockAccess world, BlockPos pos) { return FULL_BLOCK_AABB; }
-    public boolean func_176205_b(IBlockAccess world, BlockPos pos) { return false; }
-    public boolean func_149686_d(Object state) { return true; }
+    public BlockRenderLayer func_180664_k() {
+        return legacyCutout ? BlockRenderLayer.CUTOUT_MIPPED : BlockRenderLayer.SOLID;
+    }
+    public AxisAlignedBB func_180646_a(Object state, IBlockAccess world, BlockPos pos) {
+        return legacyNoCollision ? field_185506_k : FULL_BLOCK_AABB;
+    }
+    public boolean func_176205_b(IBlockAccess world, BlockPos pos) { return legacyNoCollision || legacyCutout; }
+    public boolean func_149686_d(Object state) { return !(legacyNoCollision || legacyCutout); }
     protected BlockStateContainer func_180661_e() { return new BlockStateContainer(this); }
     public Object func_185499_a(Object state, Rotation rot) { return state; }
     public Object func_185471_a(Object state, Mirror mirror) { return state; }
@@ -1098,13 +1295,38 @@ public class LegacyBlock112 extends Block {
     public Object func_180642_a(Object world, BlockPos pos, EnumFacing facing, float hitX, float hitY, float hitZ, int meta, EntityLivingBase placer) {
         return func_176223_P();
     }
-    public boolean func_149662_c(Object state) { return true; }
+    public boolean func_149662_c(Object state) { return !(legacyNoCollision || legacyCutout); }
 
-    /** neighborChanged 1.12-ish */
     public void func_189540_a(Object state, Object world, BlockPos pos, Object blockIn, BlockPos fromPos) {}
-    /** onBlockActivated */
     public boolean func_180639_a(Object world, BlockPos pos, Object state, Object player, EnumHand hand, EnumFacing facing, float hitX, float hitY, float hitZ) {
         return false;
+    }
+
+    // ---- Stage D modern overrides ----
+    @Override
+    protected int getLightDampening(BlockState state) {
+        return (legacyCutout || legacyNoCollision) ? 0 : super.getLightDampening(state);
+    }
+
+    @Override
+    protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        return legacyNoCollision ? Shapes.empty() : super.getCollisionShape(state, level, pos, context);
+    }
+
+    @Override
+    protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        // Keep a selectable outline even when collision is empty (signs/decor).
+        return legacyNoCollision ? Shapes.block() : super.getShape(state, level, pos, context);
+    }
+
+    @Override
+    protected boolean propagatesSkylightDown(BlockState state) {
+        return legacyCutout || legacyNoCollision || super.propagatesSkylightDown(state);
+    }
+
+    @Override
+    protected float getShadeBrightness(BlockState state, BlockGetter level, BlockPos pos) {
+        return (legacyCutout || legacyNoCollision) ? 1.0F : super.getShadeBrightness(state, level, pos);
     }
 }
 '@
@@ -1489,6 +1711,189 @@ modEventBus.addListener(this::commonSetup);
         # Keep .lang as reference
         Move-Item -LiteralPath $lf.FullName -Destination ($lf.FullName + '.112-reference') -Force -ErrorAction SilentlyContinue
         $touched++
+    }
+
+    return $touched
+}
+
+function Invoke-112StageDBehaviourPass {
+    param([string]$Root)
+    $javaRoot = Join-Path $Root 'src\main\java'
+    if (-not (Test-Path $javaRoot)) { return 0 }
+    $files = Get-ChildItem $javaRoot -Recurse -Filter '*.java' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '[\\/]rb[\\/]converter[\\/]stub112[\\/]' }
+    $touched = 0
+    $nl = [Environment]::NewLine
+    $cutoutPaths = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($f in $files) {
+        $t = [System.IO.File]::ReadAllText($f.FullName)
+        $o = $t
+
+        # --- Fold Material + sound/hardness/light/opacity into LegacyProps.of(...) ---
+        $propPattern = '(?s)super\s*\(\s*(Material\.\w+)\s*\)\s*;\s*this\.setRegistryName\s*\(\s*("([^"]+)")\s*\)\s*;\s*this\.func_149663_c\s*\(\s*("([^"]+)")\s*\)\s*;\s*this\.func_149672_a\s*\(\s*(SoundType\.\w+)\s*\)\s*;\s*this\.func_149711_c\s*\(\s*([0-9eE.+-]+F)\s*\)\s*;\s*this\.func_149752_b\s*\(\s*([0-9eE.+-]+F)\s*\)\s*;\s*this\.func_149715_a\s*\(\s*([0-9eE.+-]+F)\s*\)\s*;\s*this\.func_149713_g\s*\(\s*(\d+)\s*\)\s*;'
+        $t = [regex]::Replace($t, $propPattern, {
+            param($m)
+            $mat = $m.Groups[1].Value
+            $regQ = $m.Groups[2].Value
+            $unlocQ = $m.Groups[4].Value
+            $sound = $m.Groups[6].Value
+            $hard = $m.Groups[7].Value
+            $resist = $m.Groups[8].Value
+            $light = $m.Groups[9].Value
+            $opacity = $m.Groups[10].Value
+            $path = $m.Groups[3].Value
+            @"
+super(rb.converter.stub112.LegacyProps.of($mat, $sound, $hard, $resist, $light, $opacity));
+         this.setRegistryName($regQ);
+         this.func_149663_c($unlocQ);
+"@
+        })
+
+        # Facing blocks → real horizontal state holder
+        if ($t -match 'PropertyDirection\s+FACING|BlockHorizontal\.field_185512_D|LegacyHorizontalBlock112') {
+            $t = $t -replace 'extends\s+LegacyBlock112\b', 'extends LegacyHorizontalBlock112'
+            $t = $t -replace 'public\s+static\s+final\s+PropertyDirection\s+FACING\s*=\s*BlockHorizontal\.field_185512_D\s*;',
+                '// Stage D: FACING = LegacyHorizontalBlock112.FACING (real BlockState property)'
+            $t = $t -replace 'this\.func_180632_j\s*\([^;]*\);',
+                '// Stage D: default facing registered by LegacyHorizontalBlock112'
+            # Legacy BlockStateContainer cannot hold modern EnumProperty
+            $t = $t -replace 'new\s+IProperty\s*\[\s*\]\s*\{\s*FACING\s*\}',
+                'new IProperty[]{ /* Stage D: real FACING on LegacyHorizontalBlock112 */ }'
+            # Soft-disable leftover 1.12 state helpers that still mention FACING with LegacyBlockState
+            $t = $t -replace '(?s)(public\s+LegacyBlockState\s+func_185499_a\s*\([^)]*\)\s*\{)(.*?)(\n\s*\})',
+                '$1 return state; /* Stage D: use Block.rotate */ $3'
+            $t = $t -replace '(?s)(public\s+LegacyBlockState\s+func_185471_a\s*\([^)]*\)\s*\{)(.*?)(\n\s*\})',
+                '$1 return state; /* Stage D: use Block.mirror */ $3'
+            $t = $t -replace '(?s)(public\s+LegacyBlockState\s+func_176203_a\s*\([^)]*\)\s*\{)(.*?)(\n\s*\})',
+                '$1 return new rb.converter.stub112.LegacyBlockState(); $3'
+            $t = $t -replace '(?s)(public\s+int\s+func_176201_c\s*\([^)]*\)\s*\{)(.*?)(\n\s*\})',
+                '$1 return 0; $3'
+            $t = $t -replace '(?s)(public\s+LegacyBlockState\s+func_180642_a\s*\([^)]*\)\s*\{)(.*?)(\n\s*\})',
+                '$1 return new rb.converter.stub112.LegacyBlockState(); /* placement via getStateForPlacement */ $3'
+            if ($t -match 'LegacyHorizontalBlock112' -and $t -notmatch 'import rb\.converter\.stub112\.LegacyHorizontalBlock112') {
+                $t = $t -replace '(?m)^(package\s+[^;]+;\s*)',
+                    ('$1' + $nl + 'import rb.converter.stub112.LegacyHorizontalBlock112;' + $nl)
+            }
+        }
+
+        # No-collision decorations (NULL_AABB)
+        if ($t -match 'return\s+field_185506_k\b') {
+            if ($t -match 'super\(rb\.converter\.stub112\.LegacyProps\.of') {
+                $t = $t -replace '(super\(rb\.converter\.stub112\.LegacyProps\.of\([^;]+;\s*)',
+                    ('$1' + $nl + '         this.setLegacyNoCollision();' + $nl + '         ')
+            }
+            elseif ($t -match 'super\(Material\.') {
+                $t = $t -replace '(super\(Material\.\w+\);\s*)',
+                    ('$1' + $nl + '         this.setLegacyNoCollision();' + $nl + '         ')
+            }
+        }
+
+        # Cutout layers
+        if ($t -match 'BlockRenderLayer\.CUTOUT') {
+            if ($t -match 'super\(rb\.converter\.stub112\.LegacyProps\.of') {
+                $t = $t -replace '(super\(rb\.converter\.stub112\.LegacyProps\.of\([^;]+;\s*)',
+                    ('$1' + $nl + '         this.setLegacyCutout();' + $nl + '         ')
+            }
+            elseif ($t -match 'setLegacyNoCollision') {
+                $t = $t -replace '(this\.setLegacyNoCollision\(\);\s*)',
+                    ('$1' + $nl + '         this.setLegacyCutout();' + $nl + '         ')
+            }
+            # collect registry paths for model render_type injection
+            [regex]::Matches($t, 'setRegistryName\(\s*"([^"]+)"\s*\)') | ForEach-Object {
+                [void]$cutoutPaths.Add($_.Groups[1].Value)
+            }
+        }
+
+        # Ensure LegacyProps import when used
+        if ($t -match 'LegacyProps\.of' -and $t -notmatch 'import rb\.converter\.stub112\.LegacyProps') {
+            $t = $t -replace '(?m)^(package\s+[^;]+;\s*)',
+                ('$1' + $nl + 'import rb.converter.stub112.LegacyProps;' + $nl)
+        }
+
+        if ($t -match 'LegacyProps\.of|LegacyHorizontalBlock112|setLegacyNoCollision|setLegacyCutout') {
+            if ($t -notmatch 'TODO_112_STAGE_D') {
+                $t = $t -replace '(?m)^(package\s+[^;]+;\s*)',
+                    ('$1' + $nl + '// TODO_112_STAGE_D: Properties/facing/collision applied; refine shapes & tabs as needed.' + $nl)
+            }
+        }
+
+        # --- @Mod: register CreativeModeTabs from CreativeTabs bridge; drop BUILDING_BLOCKS dump ---
+        if ($t -match '@Mod\s*\(' -and $t -match 'onRegisterBlocksItems') {
+            $need = @(
+                'import net.minecraft.world.item.CreativeModeTab;',
+                'import net.minecraft.network.chat.Component;',
+                'import rb.converter.stub112.CreativeTabs;'
+            )
+            foreach ($imp in $need) {
+                if ($t -notmatch [regex]::Escape($imp)) {
+                    $t = $t -replace '(?m)^(package\s+[^;]+;\s*)', ('$1' + $nl + $imp + $nl)
+                }
+            }
+
+            # Expand RegisterEvent to also register creative tabs
+            if ($t -notmatch 'CREATIVE_MODE_TAB') {
+                $t = $t -replace '(event\.register\(Registries\.ITEM,\s*helper\s*->\s*\{[\s\S]*?\}\);)', @'
+$1
+        event.register(Registries.CREATIVE_MODE_TAB, helper -> {
+            for (rb.converter.stub112.CreativeTabs tab : rb.converter.stub112.CreativeTabs.allTabs()) {
+                final rb.converter.stub112.CreativeTabs tabRef = tab;
+                helper.register(Identifier.fromNamespaceAndPath(MODID, tabRef.registryPath()),
+                    CreativeModeTab.builder()
+                        .title(Component.literal(tabRef.getTabLabel()))
+                        .icon(tabRef::createIcon)
+                        .displayItems((params, out) -> {
+                            for (Block b : tabRef.getBlocks()) {
+                                Item it = b.asItem();
+                                if (it != null && it != net.minecraft.world.item.Items.AIR) {
+                                    out.accept(it);
+                                }
+                            }
+                        })
+                        .build());
+            }
+        });
+'@
+            }
+
+            # Prefer custom tabs over dumping everything into BUILDING_BLOCKS
+            if ($t -match 'CreativeModeTabs\.BUILDING_BLOCKS') {
+                $t = $t -replace '(?s)private void addCreative\(final BuildCreativeModeTabContentsEvent event\)\s*\{[\s\S]*?\n    \}', @'
+private void addCreative(final BuildCreativeModeTabContentsEvent event) {
+        // Stage D: items are attached to registered CreativeModeTabs via CreativeTabs bridge.
+    }
+'@
+            }
+        }
+
+        if ($t -ne $o) {
+            [System.IO.File]::WriteAllText($f.FullName, $t)
+            $touched++
+        }
+    }
+
+    # Inject render_type into block/item models for cutout registry paths
+    if ($cutoutPaths.Count -gt 0) {
+        $modelRoots = @(
+            (Join-Path $Root 'src\main\resources\assets')
+        )
+        foreach ($assets in $modelRoots) {
+            if (-not (Test-Path $assets)) { continue }
+            $models = Get-ChildItem $assets -Recurse -Include '*.json' -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match '[\\/]models[\\/](block|item)[\\/]' }
+            foreach ($mf in $models) {
+                $base = [IO.Path]::GetFileNameWithoutExtension($mf.Name)
+                if (-not $cutoutPaths.Contains($base)) { continue }
+                $raw = [System.IO.File]::ReadAllText($mf.FullName)
+                if ($raw -match '"render_type"') { continue }
+                # Insert render_type after opening brace
+                $newRaw = [regex]::Replace($raw, '^\s*\{', "{`r`n  `"render_type`": `"minecraft:cutout_mipped`",", 1)
+                if ($newRaw -ne $raw) {
+                    [System.IO.File]::WriteAllText($mf.FullName, $newRaw)
+                    $touched++
+                }
+            }
+        }
     }
 
     return $touched
@@ -1999,6 +2404,10 @@ Write-Step 'Stage C: element discovery + real RegisterEvent + BlockItem instance
 $c = Invoke-112StageCRegistryPass -Root $OutputPath
 Write-Ok "Stage C touched $c Java file(s)"
 
+Write-Step 'Stage D: Properties, horizontal facing, collision/cutout, creative tabs'
+$d = Invoke-112StageDBehaviourPass -Root $OutputPath
+Write-Ok "Stage D touched $d file(s)"
+
 Write-Step 'Gradle wrapper'
 Install-WrapperIfPossible -Root $OutputPath
 
@@ -2011,38 +2420,33 @@ $report = @"
 - Output: $OutputPath
 - Target: Minecraft $MinecraftVersion / NeoForge $NeoVersion
 - Detected MC hint: $($meta.mc_hint)
-- Converter stage: **C (v0.4)** - discovery + RegisterEvent + real BlockItem; block APIs still LegacyBlock112
+- Converter stage: **D (v0.5)** - Properties/facing/tabs on top of Stage C registration
 - Generated: $gen
 
 ## Automated
 
-### Stage A
-1. Scaffold + package renames + modern @Mod(IEventBus)
-2. stub112 FML lifecycle / proxies
+### Stage A–C
+1. Scaffold, stubs, @Mod + ElementDiscovery + RegisterEvent + BlockItem + lang JSON
 
-### Stage B
-3. LegacyBlock112 + Material/EnumFacing/ItemBlock compile stubs
+### Stage D
+2. **LegacyProps.of** folds Material/sound/hardness/light/opacity into ``BlockBehaviour.Properties``
+3. **LegacyHorizontalBlock112** for FACING blocks (real ``HORIZONTAL_FACING``)
+4. Empty collision + cutout flags; ``render_type: cutout_mipped`` on matching models
+5. **CreativeModeTab** registration from MCreator ``CreativeTabs`` + block→tab assignment
 
-### Stage C
-4. **ElementDiscovery** classpath scan (replaces empty ASMDataTable)
-5. Single-instance ``BlockCustom`` + real ``BlockItem`` in initElements
-6. **RegisterEvent** registers blocks/items under mod id paths from setRegistryName
-7. Items accepted into ``CreativeModeTabs.BUILDING_BLOCKS``
+## You must still fix manually (post Stage D)
 
-## You must still fix manually (post Stage C)
-
-- BlockBehaviour.Properties / facing / collision (LegacyBlock112 is still a shim)
-- Proper CreativeModeTab per MCreator tab (currently all in BUILDING_BLOCKS)
-- Client models / RenderType / lang JSON
-- Tile entities / GUIs / packets
+- Accurate voxel shapes (not just full-block / empty)
+- Non-horizontal FACING / multi-property states
+- GUIs / TileEntities / packets
+- Recipes / loot / tags
 - Runtime testing on NeoForge 26.2
 
 ## Next
 
 cd "$OutputPath"
 .\gradlew.bat compileJava --stacktrace
-
-Stage C improves **runtime registration**; block behaviour is not a full 1.12 port.
+.\gradlew.bat runClient
 "@
 [System.IO.File]::WriteAllText($reportPath, $report)
 Write-Ok "Wrote $reportPath"

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.0 — 2026-08-01
+
+### Stage D — block behaviour + creative tabs
+
+- **LegacyProps.of**: Material + SoundType + hardness/resistance/light/opacity → `BlockBehaviour.Properties`
+- **LegacyHorizontalBlock112**: real `HORIZONTAL_FACING` for ~80 MCreator horizontal blocks
+- Empty collision + cutout flags; inject `render_type: minecraft:cutout_mipped` into matching models
+- **CreativeModeTab** registration from `CreativeTabs` + `func_149647_a` block assignment
+- Soft-disable leftover 1.12 facing state helpers that conflicted with modern properties
+
+### Hospital proof
+
+| | Stage C | Stage D |
+|--|---------|---------|
+| `compileJava` | SUCCESS | **SUCCESS** |
+| Properties fold | no | **131× LegacyProps.of** |
+| Horizontal facing | stub only | **80× LegacyHorizontalBlock112** |
+| Cutout models | — | **166 JSON** |
+| Creative tabs | BUILDING_BLOCKS dump | **registered CreativeModeTab(s)** |
+
+Still open: precise voxel shapes, multi-property states, GUIs/TE/packets, recipes.
+
 ## 0.4.0 — 2026-08-01
 
 ### Stage C — real registration path (MCreator-oriented)

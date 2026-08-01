@@ -27,7 +27,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "RB 1.12 → 26.2 Java Converter v0.4.0";
+        Text = "RB 1.12 → 26.2 Java Converter v0.5.0";
         ClientSize = new Size(980, 720);
         MinimumSize = new Size(840, 600);
         StartPosition = FormStartPosition.CenterScreen;

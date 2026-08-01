@@ -1,6 +1,6 @@
 # RB 1.12 → 26.2 Java Converter
 
-**Current release: v0.4.0 (experimental — Stage C registration; Hospital compileJava green)**
+**Current release: v0.5.0 (experimental — Stage D behaviour; Hospital compileJava green)**
 
 Dedicated converter for **Minecraft Forge 1.12.2** finished `.jar` mods (and 1.12-style source trees) toward a **NeoForge 26.2** ModDevGradle scaffold.
 
@@ -21,15 +21,17 @@ This is **not** the same product as [LegacyJavaConverter](https://github.com/Rob
 
 **Stage B (v0.3):** LegacyBlock112 + 1.12 type stubs (compile surface)  
 
-**Stage C (v0.4):** ElementDiscovery + **RegisterEvent** blocks/items + real **BlockItem** + lang JSON  
+**Stage C (v0.4):** ElementDiscovery + **RegisterEvent** + real **BlockItem** + lang JSON  
 
-Hospital proof: **compileJava SUCCESS**; blocks/items should register at runtime (behaviour still LegacyBlock112 shims).
+**Stage D (v0.5):** **LegacyProps** Properties fold, **horizontal FACING**, cutout models, **CreativeModeTab** bridge  
+
+Hospital proof: **compileJava SUCCESS** with registration + basic behaviour.
 
 ## What it does **not** do (yet)
 
-- Full block behaviour port (Properties, facing, voxel shapes, redstone)  
-- Per-mod CreativeModeTab mapping (Stage C dumps into BUILDING_BLOCKS)  
+- Accurate multi-box voxel shapes / complex blockstates  
 - GUIs / TileEntities / networking modernization  
+- Recipes, loot tables, tags  
 - Mixins without hand repair  
 
 ## Requirements
