@@ -28,8 +28,9 @@
 - Write `build.gradle`, `settings.gradle`, `gradle.properties`, `neoforge.mods.toml` templates
 - Mechanical **1.12 → modern** package renames (+ ServerPlayer / MobEffect fixes)
 - **Stage A:** inject `rb.converter.stub112`, stub proxies, modern `@Mod` + IEventBus ctor
+- **Stage B:** LegacyBlock112, Material/EnumFacing/ItemBlock/properties, Level SRG helpers
 - Map FML lifecycle / GameRegistry / IGuiHandler / ModelRegistry leftovers to stubs
-- **Do not** invent full DeferredRegister rewrites for every element
+- **Do not** invent full DeferredRegister rewrites for every element (stubs compile; runtime no-ops)
 - Write `MIGRATION_112_REPORT.md`
 
 ### 3. Full pipeline (`Convert-OldJar112ToNeoForge262.ps1`)

@@ -11,9 +11,9 @@
     <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
     <Product>RB 1.12 to 26.2 Java Converter Setup</Product>
     <Company>RobbieB1980</Company>
-    <Version>0.2.0</Version>
-    <FileVersion>0.2.0</FileVersion>
-    <InformationalVersion>0.2.0</InformationalVersion>
+    <Version>0.3.0</Version>
+    <FileVersion>0.3.0</FileVersion>
+    <InformationalVersion>0.3.0</InformationalVersion>
     <Description>Installer for RB 1.12 to 26.2 Java Converter (portable toolset)</Description>
   </PropertyGroup>
 

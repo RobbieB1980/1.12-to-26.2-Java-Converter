@@ -464,6 +464,7 @@ public final class SimpleNetworkWrapper {
     public void sendTo(IMessage message, Object player) { /* no-op */ }
     public void sendToServer(IMessage message) { /* no-op */ }
     public void sendToAll(IMessage message) { /* no-op */ }
+    public void sendToDimension(IMessage message, int dimension) { /* no-op */ }
 }
 '@
         'IMessage.java' = @'
@@ -477,16 +478,44 @@ package rb.converter.stub112;
 
 /** Stage A stub for 1.12 IMessageHandler. */
 public interface IMessageHandler<REQ extends IMessage, REPLY extends IMessage> {
-    REPLY onMessage(REQ message, Object ctx);
+    REPLY onMessage(REQ message, MessageContext ctx);
 }
 '@
         'MessageContext.java' = @'
 package rb.converter.stub112;
 
-/** Stage A stub for 1.12 simpleimpl.MessageContext. */
+import net.minecraft.world.level.Level;
+
+/** Stage A/B stub for 1.12 simpleimpl.MessageContext. */
 public final class MessageContext {
     public Object side;
-    public Object getServerHandler() { return null; }
+    public final ServerHandler serverHandler = new ServerHandler();
+    public ServerHandler getServerHandler() { return serverHandler; }
+
+    public static final class ServerHandler {
+        /** player entity SRG field on NetHandlerPlayServer */
+        public final DummyPlayer field_147369_b = new DummyPlayer();
+        public ServerHandler func_71121_q() { return this; }
+        public void func_152344_a(Runnable task) { if (task != null) task.run(); }
+    }
+
+    public static final class DummyPlayer {
+        public final Level field_70170_p = null;
+        public DummyPlayer func_71121_q() { return this; }
+        public void func_152344_a(Runnable task) { if (task != null) task.run(); }
+    }
+}
+'@
+        'LegacyClient.java' = @'
+package rb.converter.stub112;
+
+/** Stage B helpers for 1.12 client Minecraft statics / scheduled tasks. */
+public final class LegacyClient {
+    private LegacyClient() {}
+    public static void addScheduledTask(Runnable task) {
+        if (task != null) task.run();
+    }
+    public static final Object field_71439_g = null;
 }
 '@
         'ByteBufUtils.java' = @'
@@ -561,10 +590,16 @@ public interface IChunkGenerator {}
         'WorldSavedData.java' = @'
 package rb.converter.stub112;
 
-/** Stage A stub: 1.12 WorldSavedData (modern: SavedData). */
+/** Stage A/B stub: 1.12 WorldSavedData (modern: SavedData). */
 public class WorldSavedData {
     public WorldSavedData(String name) {}
     public void markDirty() {}
+    /** markDirty SRG */
+    public void func_76185_a() { markDirty(); }
+    /** readFromNBT */
+    public void func_76184_a(Object nbt) {}
+    /** writeToNBT */
+    public NBTTagCompound func_189551_b(NBTTagCompound nbt) { return nbt == null ? new NBTTagCompound() : nbt; }
 }
 '@
         'SubscribeEvent.java' = @'
@@ -600,6 +635,351 @@ public class PlayerChangedDimensionEvent {
     public Player player;
 }
 '@
+        # ---------- Stage B: 1.12 block / item API surface ----------
+        'Material.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 Material (removed; use BlockBehaviour.Properties on 26.2). */
+public final class Material {
+    public static final Material field_151573_f = new Material(); // IRON
+    public static final Material field_151576_e = new Material(); // ROCK
+    public static final Material field_151575_d = new Material(); // WOOD
+    public static final Material field_151578_c = new Material(); // GROUND
+    public static final Material field_151579_a = new Material(); // AIR
+    public static final Material field_151577_b = new Material(); // GRASS
+    public static final Material field_151583_m = new Material(); // CLOTH
+    public static final Material field_151584_j = new Material(); // SAND
+    public static final Material field_151592_s = new Material(); // GLASS-ish
+    public static final Material field_151594_q = new Material(); // CIRCUITS
+    public static final Material ROCK = field_151576_e;
+    public static final Material IRON = field_151573_f;
+    public static final Material WOOD = field_151575_d;
+    private Material() {}
+}
+'@
+        'IProperty.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 IProperty. */
+public interface IProperty<T extends Comparable<T>> {
+    String getName();
+    java.util.Collection<T> getAllowedValues();
+}
+'@
+        'PropertyDirection.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 PropertyDirection (modern: DirectionProperty). */
+public final class PropertyDirection implements IProperty<EnumFacing> {
+    private final String name;
+    private PropertyDirection(String name) { this.name = name; }
+    public static PropertyDirection create(String name) { return new PropertyDirection(name); }
+    @Override public String getName() { return name; }
+    @Override public java.util.Collection<EnumFacing> getAllowedValues() {
+        return java.util.Arrays.asList(EnumFacing.values());
+    }
+}
+'@
+        'BlockHorizontal.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 BlockHorizontal. */
+public final class BlockHorizontal {
+    public static final PropertyDirection field_185512_D = PropertyDirection.create("facing");
+    public static final PropertyDirection FACING = field_185512_D;
+    private BlockHorizontal() {}
+}
+'@
+        'BlockStateContainer.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 BlockStateContainer (modern: StateDefinition). */
+public final class BlockStateContainer {
+    public BlockStateContainer(Object block, IProperty<?>... properties) {}
+    public LegacyBlockState getBaseState() { return new LegacyBlockState(); }
+}
+'@
+        'LegacyBlockState.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12-style blockstate fluent API (not real BlockState). */
+public final class LegacyBlockState {
+    /** getBaseState / container base */
+    public LegacyBlockState func_177621_b() { return this; }
+    public LegacyBlockState func_177226_a(Object property, Object value) { return this; }
+    public Object func_177229_b(Object property) { return EnumFacing.NORTH; }
+    public LegacyBlockState func_185907_a(Object mirror) { return this; }
+    public LegacyBlockState withProperty(Object property, Object value) { return func_177226_a(property, value); }
+    public Object getValue(Object property) { return func_177229_b(property); }
+}
+'@
+        'BlockRenderLayer.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 BlockRenderLayer (modern client: RenderType). */
+public enum BlockRenderLayer {
+    SOLID,
+    CUTOUT,
+    CUTOUT_MIPPED,
+    TRANSLUCENT
+}
+'@
+        'EnumFacing.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 EnumFacing (modern: Direction). */
+public enum EnumFacing {
+    DOWN, UP, NORTH, SOUTH, WEST, EAST;
+
+    public static EnumFacing func_82600_a(int index) {
+        EnumFacing[] v = values();
+        if (index < 0 || index >= v.length) return NORTH;
+        return v[index];
+    }
+    public int func_176745_a() { return ordinal(); }
+    public EnumFacing func_176734_d() {
+        return switch (this) {
+            case NORTH -> SOUTH;
+            case SOUTH -> NORTH;
+            case WEST -> EAST;
+            case EAST -> WEST;
+            default -> this;
+        };
+    }
+    public EnumFacing getOpposite() { return func_176734_d(); }
+}
+'@
+        'AxisAlignedBB.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 AxisAlignedBB (modern: AABB). */
+public final class AxisAlignedBB {
+    public final double minX, minY, minZ, maxX, maxY, maxZ;
+    public AxisAlignedBB(double x1, double y1, double z1, double x2, double y2, double z2) {
+        minX = x1; minY = y1; minZ = z1; maxX = x2; maxY = y2; maxZ = z2;
+    }
+    public AxisAlignedBB(Object pos1, Object pos2) {
+        this(0, 0, 0, 1, 1, 1);
+    }
+}
+'@
+        'IBlockAccess.java' = @'
+package rb.converter.stub112;
+
+import net.minecraft.core.BlockPos;
+
+/** Stage B stub: 1.12 IBlockAccess (modern: BlockGetter / LevelReader). */
+public interface IBlockAccess {
+    default Object getTileEntity(BlockPos pos) { return null; }
+    default int getCombinedLight(BlockPos pos, int lightValue) { return 0; }
+}
+'@
+        'Mirror.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 Mirror helpers. */
+public enum Mirror {
+    NONE, LEFT_RIGHT, FRONT_BACK;
+    public EnumFacing func_185800_a(EnumFacing facing) { return facing; }
+}
+'@
+        'Rotation.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 Rotation helpers. */
+public enum Rotation {
+    NONE, CLOCKWISE_90, CLOCKWISE_180, COUNTERCLOCKWISE_90;
+    public EnumFacing func_185831_a(EnumFacing facing) { return facing; }
+}
+'@
+        'EntityLivingBase.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 EntityLivingBase (modern: LivingEntity). */
+public class EntityLivingBase {
+    public EnumFacing func_174811_aO() { return EnumFacing.NORTH; }
+    public EnumFacing getHorizontalFacing() { return func_174811_aO(); }
+}
+'@
+        'ItemBlock.java' = @'
+package rb.converter.stub112;
+
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.block.Block;
+
+/** Stage B stub: 1.12 ItemBlock (modern: BlockItem) with registry-name chaining. */
+public class ItemBlock extends Item {
+    private final Block block;
+    public ItemBlock(Block block) {
+        super(new Item.Properties());
+        this.block = block;
+    }
+    public Block getBlock() { return block; }
+    public ItemBlock setRegistryName(String name) { return this; }
+    public ItemBlock setRegistryName(String modId, String name) { return this; }
+    public ItemBlock setRegistryName(Object name) { return this; }
+    public Object getRegistryName() { return null; }
+}
+'@
+        'CreativeTabs.java' = @'
+package rb.converter.stub112;
+
+import net.minecraft.world.item.ItemStack;
+
+/** Stage B stub: 1.12 CreativeTabs (modern: CreativeModeTab). */
+public class CreativeTabs {
+    public final String tabLabel;
+    public CreativeTabs(String label) { this.tabLabel = label; }
+    public ItemStack func_78016_d() { return ItemStack.EMPTY; }
+    public ItemStack createIcon() { return func_78016_d(); }
+    public boolean hasSearchBar() { return false; }
+    public CreativeTabs func_78025_a(String texture) { return this; }
+    public String getTabLabel() { return tabLabel; }
+}
+'@
+        'LegacyItems.java' = @'
+package rb.converter.stub112;
+
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
+
+/** Stage B helpers for 1.12 Item statics. */
+public final class LegacyItems {
+    private LegacyItems() {}
+    /** 1.12 Item.getItemFromBlock - stub returns AIR until real BlockItem registration exists. */
+    public static Item func_150898_a(Block block) {
+        return Items.AIR;
+    }
+}
+'@
+        'LegacyLevel.java' = @'
+package rb.converter.stub112;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
+
+/** Stage B no-op helpers for 1.12 World/Level SRG calls. */
+public final class LegacyLevel {
+    private LegacyLevel() {}
+    public static void destroyBlock(Level level, BlockPos pos) { /* no-op */ }
+    public static void setBlockState(Level level, BlockPos pos, Object state, int flags) { /* no-op */ }
+    public static int getRedstonePower(Level level, BlockPos pos) { return 0; }
+    public static MapStorage getMapStorage(Level level) { return new MapStorage(); }
+    public static MapStorage getPerWorldStorage(Level level) { return new MapStorage(); }
+
+    public static final class MapStorage {
+        public Object func_75742_a(Class<?> clazz, String id) { return null; }
+        public void func_75745_a(String id, Object data) { /* no-op */ }
+    }
+}
+'@
+        'LegacyBlock112.java' = @'
+package rb.converter.stub112;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.SoundType;
+import net.minecraft.world.level.block.state.BlockBehaviour;
+
+/**
+ * Stage B: 1.12-shaped Block base so MCreator BlockCustom classes compile.
+ * Not a real port - registry/hardness/light calls are no-ops or Properties defaults.
+ */
+public class LegacyBlock112 extends Block {
+    /** 1.12 NULL_AABB */
+    public static final AxisAlignedBB field_185506_k = new AxisAlignedBB(0, 0, 0, 0, 0, 0);
+    public static final AxisAlignedBB FULL_BLOCK_AABB = new AxisAlignedBB(0, 0, 0, 1, 1, 1);
+
+    protected final LegacyBlockState field_176227_L = new LegacyBlockState();
+    private String legacyRegistryName;
+
+    public LegacyBlock112(Material material) {
+        super(BlockBehaviour.Properties.of());
+    }
+
+    public LegacyBlock112(BlockBehaviour.Properties properties) {
+        super(properties);
+    }
+
+    public LegacyBlock112 setRegistryName(String name) {
+        this.legacyRegistryName = name;
+        return this;
+    }
+
+    public LegacyBlock112 setRegistryName(String modId, String name) {
+        this.legacyRegistryName = modId + ":" + name;
+        return this;
+    }
+
+    public Object getRegistryName() {
+        return legacyRegistryName;
+    }
+
+    /** setUnlocalizedName */
+    public void func_149663_c(String name) { /* no-op */ }
+    /** setSoundType */
+    public void func_149672_a(SoundType sound) { /* no-op */ }
+    public void func_149672_a(Object sound) { /* no-op */ }
+    /** setHardness */
+    public void func_149711_c(float hardness) { /* no-op */ }
+    /** setResistance */
+    public void func_149752_b(float resistance) { /* no-op */ }
+    /** setLightLevel */
+    public void func_149715_a(float value) { /* no-op */ }
+    /** setLightOpacity */
+    public void func_149713_g(int opacity) { /* no-op */ }
+    /** setCreativeTab */
+    public void func_149647_a(Object tab) { /* no-op */ }
+    /** setDefaultState */
+    public void func_180632_j(Object state) { /* no-op */ }
+
+    /** getDefaultState */
+    public LegacyBlockState func_176223_P() { return field_176227_L; }
+
+    public BlockRenderLayer func_180664_k() { return BlockRenderLayer.SOLID; }
+    public AxisAlignedBB func_180646_a(Object state, IBlockAccess world, BlockPos pos) { return FULL_BLOCK_AABB; }
+    public boolean func_176205_b(IBlockAccess world, BlockPos pos) { return false; }
+    public boolean func_149686_d(Object state) { return true; }
+    protected BlockStateContainer func_180661_e() { return new BlockStateContainer(this); }
+    public Object func_185499_a(Object state, Rotation rot) { return state; }
+    public Object func_185471_a(Object state, Mirror mirror) { return state; }
+    public Object func_176203_a(int meta) { return func_176223_P(); }
+    public int func_176201_c(Object state) { return 0; }
+    public Object func_180642_a(Object world, BlockPos pos, EnumFacing facing, float hitX, float hitY, float hitZ, int meta, EntityLivingBase placer) {
+        return func_176223_P();
+    }
+    public boolean func_149662_c(Object state) { return true; }
+
+    /** neighborChanged 1.12-ish */
+    public void func_189540_a(Object state, Object world, BlockPos pos, Object blockIn, BlockPos fromPos) {}
+    /** onBlockActivated */
+    public boolean func_180639_a(Object world, BlockPos pos, Object state, Object player, EnumHand hand, EnumFacing facing, float hitX, float hitY, float hitZ) {
+        return false;
+    }
+}
+'@
+        'EnumHand.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 EnumHand (modern: InteractionHand). */
+public enum EnumHand {
+    MAIN_HAND,
+    OFF_HAND
+}
+'@
+        'NBTTagCompound.java' = @'
+package rb.converter.stub112;
+
+/** Stage B stub: 1.12 NBTTagCompound (modern: CompoundTag). */
+public class NBTTagCompound {
+    public void func_74768_a(String key, int value) {}
+    public int func_74762_e(String key) { return 0; }
+    public void func_74778_a(String key, String value) {}
+    public String func_74779_i(String key) { return ""; }
+    public boolean func_74764_b(String key) { return false; }
+}
+'@
     }
 
     $count = 0
@@ -609,6 +989,166 @@ public class PlayerChangedDimensionEvent {
         $count++
     }
     return $count
+}
+
+function Invoke-112StageBBlockRewrites {
+    param([string]$Root)
+    $files = Get-ChildItem (Join-Path $Root 'src\main\java') -Recurse -Filter '*.java' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '[\\/]rb[\\/]converter[\\/]stub112[\\/]' }
+    $touched = 0
+    $nl = [Environment]::NewLine
+    foreach ($f in $files) {
+        $t = [System.IO.File]::ReadAllText($f.FullName)
+        $o = $t
+
+        # --- Map classic 1.12 block/item types to stub112 (after package modernize may have wrong paths) ---
+        $typeMap = [ordered]@{
+            'net.minecraft.world.level.material.Material'                    = 'rb.converter.stub112.Material'
+            'net.minecraft.block.material.Material'                          = 'rb.converter.stub112.Material'
+            'net.minecraft.world.level.block.BlockHorizontal'                = 'rb.converter.stub112.BlockHorizontal'
+            'net.minecraft.block.BlockHorizontal'                            = 'rb.converter.stub112.BlockHorizontal'
+            'net.minecraft.world.level.block.properties.IProperty'           = 'rb.converter.stub112.IProperty'
+            'net.minecraft.world.level.block.properties.PropertyDirection'   = 'rb.converter.stub112.PropertyDirection'
+            'net.minecraft.block.properties.IProperty'                       = 'rb.converter.stub112.IProperty'
+            'net.minecraft.block.properties.PropertyDirection'               = 'rb.converter.stub112.PropertyDirection'
+            'net.minecraft.world.level.block.state.BlockStateContainer'      = 'rb.converter.stub112.BlockStateContainer'
+            'net.minecraft.block.state.BlockStateContainer'                  = 'rb.converter.stub112.BlockStateContainer'
+            'net.minecraft.util.BlockRenderLayer'                            = 'rb.converter.stub112.BlockRenderLayer'
+            'net.minecraft.util.EnumFacing'                                  = 'rb.converter.stub112.EnumFacing'
+            'net.minecraft.util.Mirror'                                      = 'rb.converter.stub112.Mirror'
+            'net.minecraft.util.Rotation'                                    = 'rb.converter.stub112.Rotation'
+            'net.minecraft.util.EnumHand'                                    = 'rb.converter.stub112.EnumHand'
+            'net.minecraft.core.AxisAlignedBB'                               = 'rb.converter.stub112.AxisAlignedBB'
+            'net.minecraft.util.math.AxisAlignedBB'                          = 'rb.converter.stub112.AxisAlignedBB'
+            'net.minecraft.world.IBlockAccess'                               = 'rb.converter.stub112.IBlockAccess'
+            'net.minecraft.world.entity.EntityLivingBase'                    = 'rb.converter.stub112.EntityLivingBase'
+            'net.minecraft.entity.EntityLivingBase'                          = 'rb.converter.stub112.EntityLivingBase'
+            'net.minecraft.world.item.ItemBlock'                             = 'rb.converter.stub112.ItemBlock'
+            'net.minecraft.item.ItemBlock'                                   = 'rb.converter.stub112.ItemBlock'
+            'net.minecraft.world.item.CreativeTabs'                          = 'rb.converter.stub112.CreativeTabs'
+            'net.minecraft.creativetab.CreativeTabs'                         = 'rb.converter.stub112.CreativeTabs'
+            'net.minecraft.nbt.NBTTagCompound'                               = 'rb.converter.stub112.NBTTagCompound'
+        }
+        foreach ($pair in $typeMap.GetEnumerator()) {
+            $t = $t -replace [regex]::Escape($pair.Key), $pair.Value
+        }
+
+        # Drop dead properties package imports; FQN map above already rewrote specific types
+        $t = $t -replace '(?m)^import\s+net\.minecraft\.world\.level\.block\.properties\.\w+\s*;\s*\r?\n', ''
+
+        # Ensure stub imports when simple names appear
+        $importPairs = @(
+            @('Material', 'import rb.converter.stub112.Material;'),
+            @('BlockHorizontal', 'import rb.converter.stub112.BlockHorizontal;'),
+            @('PropertyDirection', 'import rb.converter.stub112.PropertyDirection;'),
+            @('IProperty', 'import rb.converter.stub112.IProperty;'),
+            @('BlockStateContainer', 'import rb.converter.stub112.BlockStateContainer;'),
+            @('BlockRenderLayer', 'import rb.converter.stub112.BlockRenderLayer;'),
+            @('EnumFacing', 'import rb.converter.stub112.EnumFacing;'),
+            @('AxisAlignedBB', 'import rb.converter.stub112.AxisAlignedBB;'),
+            @('IBlockAccess', 'import rb.converter.stub112.IBlockAccess;'),
+            @('Mirror', 'import rb.converter.stub112.Mirror;'),
+            @('Rotation', 'import rb.converter.stub112.Rotation;'),
+            @('EntityLivingBase', 'import rb.converter.stub112.EntityLivingBase;'),
+            @('ItemBlock', 'import rb.converter.stub112.ItemBlock;'),
+            @('CreativeTabs', 'import rb.converter.stub112.CreativeTabs;'),
+            @('EnumHand', 'import rb.converter.stub112.EnumHand;'),
+            @('NBTTagCompound', 'import rb.converter.stub112.NBTTagCompound;'),
+            @('LegacyBlock112', 'import rb.converter.stub112.LegacyBlock112;'),
+            @('LegacyBlockState', 'import rb.converter.stub112.LegacyBlockState;')
+        )
+        foreach ($pair in $importPairs) {
+            $simple = $pair[0]
+            $imp = $pair[1]
+            if ($t -match "(?<![\w.])$([regex]::Escape($simple))\b" -and $t -notmatch [regex]::Escape($imp)) {
+                $t = $t -replace '(?m)^(package\s+[^;]+;\s*)', ('$1' + $nl + $imp + $nl)
+            }
+        }
+
+        # MCreator / 1.12 blocks: extend LegacyBlock112 when Material-based Block
+        if ($t -match 'super\s*\(\s*Material\.' -or ($t -match 'extends\s+Block\b' -and $t -match 'setRegistryName\s*\(|func_149663_c\s*\(|func_149711_c\s*\(')) {
+            $t = $t -replace 'extends\s+Block\b', 'extends LegacyBlock112'
+            if ($t -match 'extends\s+LegacyBlock112' -and $t -notmatch 'import rb\.converter\.stub112\.LegacyBlock112') {
+                $t = $t -replace '(?m)^(package\s+[^;]+;\s*)', ('$1' + $nl + 'import rb.converter.stub112.LegacyBlock112;' + $nl)
+            }
+        }
+
+        # BlockState fluent 1.12 API → LegacyBlockState in property-heavy block classes
+        if ($t -match 'BlockStateContainer|PropertyDirection|IProperty|func_177226_a|func_176223_P') {
+            $t = $t -replace 'import\s+net\.minecraft\.world\.level\.block\.state\.BlockState\s*;', 'import rb.converter.stub112.LegacyBlockState;'
+            $t = $t -replace '(?<![\w.])BlockState\b', 'LegacyBlockState'
+            if ($t -match 'LegacyBlockState' -and $t -notmatch 'import rb\.converter\.stub112\.LegacyBlockState') {
+                $t = $t -replace '(?m)^(package\s+[^;]+;\s*)', ('$1' + $nl + 'import rb.converter.stub112.LegacyBlockState;' + $nl)
+            }
+        }
+
+        # Item.getItemFromBlock
+        $t = $t -replace 'Item\.func_150898_a\s*\(', 'rb.converter.stub112.LegacyItems.func_150898_a('
+
+        # Block/Item getRegistryName not on modern Block — replace whole receiver.expr with null
+        $t = $t -replace '[a-zA-Z_][\w]*\.getRegistryName\s*\(\s*\)', 'null /* TODO_112 registry name */'
+
+        # BlockPos 1.12 SRG accessors
+        $t = $t -replace '\.func_177958_n\s*\(\s*\)', '.getX()'
+        $t = $t -replace '\.func_177956_o\s*\(\s*\)', '.getY()'
+        $t = $t -replace '\.func_177952_p\s*\(\s*\)', '.getZ()'
+
+        # Minecraft.getMinecraft()
+        $t = $t -replace 'Minecraft\.func_71410_x\s*\(\s*\)', 'Minecraft.getInstance()'
+
+        # SoundType SRG fields → modern constants
+        $soundMap = [ordered]@{
+            'field_185848_a' = 'WOOD'
+            'field_185849_b' = 'GRAVEL'
+            'field_185850_c' = 'GRASS'
+            'field_185851_d' = 'STONE'
+            'field_185852_e' = 'METAL'
+            'field_185853_f' = 'GLASS'
+            'field_185854_g' = 'WOOL'
+            'field_185855_h' = 'SAND'
+            'field_185856_i' = 'SNOW'
+            'field_185857_j' = 'LADDER'
+            'field_185858_k' = 'ANVIL'
+            'field_185859_l' = 'SLIME_BLOCK'
+        }
+        foreach ($k in $soundMap.Keys) {
+            $t = $t -replace "SoundType\.$k\b", "SoundType.$($soundMap[$k])"
+        }
+        $t = $t -replace 'SoundType\.field_\w+', 'SoundType.STONE'
+        # Unknown Material SRG fields → ROCK stub instance
+        $t = $t -replace 'Material\.field_(?!151573_f|151576_e|151575_d|151578_c|151579_a|151577_b|151583_m|151584_j|151592_s|151594_q)\w+', 'Material.ROCK'
+
+        # Soft-fix leftover world. SRG in variable classes
+        $t = $t -replace '\bworld\.field_72995_K\b', 'false /* TODO_112 isRemote */'
+        # World→Level renamed the type/param to Level but left body `world` refs
+        $t = $t -replace '(?<![\w."])\bworld\b(?![\w"])', 'Level'
+
+        # static Block field .func_176223_P() not on modern Block
+        $t = $t -replace '[\w.]+\.func_176223_P\s*\(\s*\)', '(new rb.converter.stub112.LegacyBlockState())'
+
+        # Client scheduled tasks / player field
+        $t = $t -replace 'Minecraft\.getInstance\(\)\.func_152344_a\s*\(', 'rb.converter.stub112.LegacyClient.addScheduledTask('
+        $t = $t -replace 'Minecraft\.getInstance\(\)\.field_71439_g\.field_70170_p', 'null'
+        $t = $t -replace 'Minecraft\.getInstance\(\)\.field_71439_g', 'null'
+
+        # Level SRG helpers used by procedures (no-ops via LegacyLevel)
+        $t = $t -replace '\bLevel\.func_175698_g\s*\(', 'rb.converter.stub112.LegacyLevel.destroyBlock(Level, '
+        $t = $t -replace '\bLevel\.func_180501_a\s*\(', 'rb.converter.stub112.LegacyLevel.setBlockState(Level, '
+        $t = $t -replace '\bLevel\.func_175687_A\s*\(', 'rb.converter.stub112.LegacyLevel.getRedstonePower(Level, '
+        $t = $t -replace '\bLevel\.func_175693_T\s*\(\s*\)', 'rb.converter.stub112.LegacyLevel.getMapStorage(Level)'
+        $t = $t -replace '\bLevel\.getPerWorldStorage\s*\(\s*\)', 'rb.converter.stub112.LegacyLevel.getPerWorldStorage(Level)'
+
+        if ($t -match 'LegacyBlock112|stub112\.(Material|EnumFacing|ItemBlock)' -and $t -notmatch 'TODO_112_STAGE_B') {
+            $t = $t -replace '(?m)^(package\s+[^;]+;\s*)',
+                ('$1' + $nl + '// TODO_112_STAGE_B: block/item 1.12 API stubbed - replace with BlockBehaviour.Properties + BlockItem.' + $nl)
+        }
+
+        if ($t -ne $o) {
+            [System.IO.File]::WriteAllText($f.FullName, $t)
+            $touched++
+        }
+    }
+    return $touched
 }
 
 function Invoke-112ProxyStubPass {
@@ -1108,6 +1648,10 @@ Write-Ok "Updated $m @Mod class(es)"
 $j2 = Invoke-112MechanicalRewrites -Root $OutputPath
 if ($j2 -gt 0) { Write-Ok "Second rewrite pass touched $j2 file(s)" }
 
+Write-Step 'Stage B: 1.12 block/item API stubs (Material, EnumFacing, LegacyBlock112, ItemBlock, ...)'
+$b = Invoke-112StageBBlockRewrites -Root $OutputPath
+Write-Ok "Stage B touched $b Java file(s)"
+
 Write-Step 'Gradle wrapper'
 Install-WrapperIfPossible -Root $OutputPath
 
@@ -1120,31 +1664,31 @@ $report = @"
 - Output: $OutputPath
 - Target: Minecraft $MinecraftVersion / NeoForge $NeoVersion
 - Detected MC hint: $($meta.mc_hint)
-- Converter stage: **A (v0.2)** — proxies/FML lifecycle stubs + modern @Mod ctor
+- Converter stage: **B (v0.3)** - Stage A lifecycle + Stage B block/item stubs; Hospital proof compileJava green via stubs
 - Generated: $gen
 
-## Automated (Stage A)
+## Automated
 
-1. Project copy (original unchanged)
-2. ModDevGradle 26.2 scaffold (Java 25)
-3. Metadata from mcmod.info / assets when available
-4. Mechanical package renames (1.12 to modern world/core packages)
-5. ResourceLocation to Identifier; World/EntityPlayer renames
-6. **ServerPlayer** import fix (`server.level`); **Potion** → **MobEffect**
-7. SideOnly → OnlyIn(Dist); MinecraftForge.EVENT_BUS → NeoForge.EVENT_BUS
-8. **stub112** package for FML*Event, GameRegistry, IGuiHandler, ModelRegistryEvent, network simpleimpl, etc.
-9. **IProxy / ClientProxy / ServerProxy** rewritten to empty no-arg stubs
-10. **@Mod** rewritten to modern value form + **IEventBus** constructor + FMLCommonSetupEvent listener
-11. FML @EventHandler pre/init/post/serverLoad removed from mod entry
-12. Legacy mcmod.info → mcmod.info.112-reference; templates for NeoForge mods.toml
+### Stage A
+1. Project copy + ModDevGradle 26.2 scaffold (Java 25)
+2. Package renames, Identifier, ServerPlayer/MobEffect, SideOnly/Dist
+3. stub112 FML lifecycle / GameRegistry / network simpleimpl
+4. IProxy stubs + modern @Mod(IEventBus) constructor
 
-## You must still fix manually (post Stage A)
+### Stage B
+5. stub112 Material, EnumFacing, AxisAlignedBB, IBlockAccess, properties, ItemBlock, CreativeTabs
+6. **LegacyBlock112** base for MCreator ``extends Block`` + common ``func_*`` / setRegistryName
+7. **LegacyBlockState** for 1.12 property fluent calls
+8. SoundType SRG field → modern SoundType constants
+9. Item.func_150898_a → LegacyItems helper
 
-- All registrations (blocks/items/entities) to DeferredRegister (stubs are no-ops)
-- MCreator block APIs (Material, properties, func_* SRG names, creative tabs)
-- World gen, fuels, recipes
-- Client models (JSON blockstates / items; OBJ pipeline)
-- Tile entities / GUIs / packets (real networking)
+## You must still fix manually (post Stage B)
+
+- Real **DeferredRegister** / BlockBehaviour.Properties (stubs are no-ops at runtime)
+- BlockItem registration (ItemBlock stub is compile-only)
+- CreativeModeTab (CreativeTabs stub)
+- Client models / RenderType (BlockRenderLayer stub)
+- Tile entities / GUIs / packets
 - Remaining compile errors after gradlew compileJava
 - Runtime testing on NeoForge 26.2
 
@@ -1153,7 +1697,7 @@ $report = @"
 cd "$OutputPath"
 .\gradlew.bat compileJava --stacktrace
 
-Scaffold + Stage A success is not full compile success. 1.12 to 26.2 is a multi-year API gap.
+Scaffold + Stage A/B success is not full compile or runtime success.
 "@
 [System.IO.File]::WriteAllText($reportPath, $report)
 Write-Ok "Wrote $reportPath"

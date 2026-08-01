@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0 — 2026-08-01
+
+### Stage B — 1.12 block / item compile surface
+
+- **LegacyBlock112** base for MCreator `extends Block` + common `func_*` / `setRegistryName`
+- **LegacyBlockState**, Material, EnumFacing, AxisAlignedBB, IBlockAccess, properties, ItemBlock, CreativeTabs stubs
+- SoundType SRG fields → modern constants; BlockPos SRG → `getX/Y/Z`
+- `Item.func_150898_a` → LegacyItems; Level/World procedure SRG helpers (`LegacyLevel`)
+- Leftover `world` body refs after World→Level rename; client scheduled-task stubs
+
+### Hospital proof (MCreator 1.12.2 jar)
+
+| Metric (compileJava, maxerrs 10000) | v0.1.0 | v0.2.0 Stage A | v0.3.0 Stage B |
+|-------------------------------------|--------|----------------|----------------|
+| Unique `file:line:msg` errors       | 5472   | 4009           | **0**          |
+| Lifecycle errors                    | 137    | 0              | **0**          |
+| `compileJava`                       | fail   | fail           | **SUCCESS**    |
+
+**Note:** compile success uses **stub112 no-ops** — not a runtime-ready NeoForge port. DeferredRegister, real BlockBehaviour.Properties, BlockItem, CreativeModeTab, models, and networking still need Stage C+ hand port.
+
 ## 0.2.0 — 2026-08-01
 
 ### Stage A — FML lifecycle / proxies / entrypoint
@@ -18,8 +38,6 @@
 | Unique `file:line:msg` errors       | **5472**               | **4009** (−26.6%)      |
 | Lifecycle files (mod/proxy/Elements)| **137**                | **0**                  |
 | Files with errors                   | 147                    | 142                    |
-
-Remaining errors are mostly 1.12 block APIs (Material, properties, ItemBlock, SRG `func_*`, etc.) — Stage B territory.
 
 ## 0.1.0 — 2026-08-01
 

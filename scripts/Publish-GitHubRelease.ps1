@@ -3,13 +3,13 @@
   Create/update a GitHub Release and upload portable + setup artifacts from dist/.
 
 .EXAMPLE
-  .\scripts\Publish-GitHubRelease.ps1 -Tag v0.2.0
+  .\scripts\Publish-GitHubRelease.ps1 -Tag v0.3.0
 #>
 [CmdletBinding()]
 param(
-    [string]$Tag = 'v0.2.0',
+    [string]$Tag = 'v0.3.0',
     [string]$Repo = 'RobbieB1980/1.12-to-26.2-Java-Converter',
-    [string]$Name = 'RB 1.12 to 26.2 Java Converter 0.2.0'
+    [string]$Name = 'RB 1.12 to 26.2 Java Converter 0.3.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,12 +39,14 @@ $notes = @"
 
 Experimental converter: **Forge 1.12.2** jars/projects to **NeoForge 26.2** scaffolds.
 
+### Stage B (v0.3)
+
+- LegacyBlock112 + Material/EnumFacing/ItemBlock/properties compile stubs
+- Hospital proof: unique errors **5472 → 0**; ``compileJava`` **SUCCESS** (stub no-ops — not runtime-ready)
+
 ### Stage A (v0.2)
 
-- Stub IProxy/ClientProxy/ServerProxy; FML*InitializationEvent → stub112
-- Modern ``@Mod("id")`` + ``IEventBus`` constructor + ``FMLCommonSetupEvent``
-- ServerPlayer / MobEffect rename fixes; GameRegistry / IGuiHandler / ModelRegistry stubs
-- Hospital proof: unique compile errors **5472 → 4009**; lifecycle file errors **137 → 0**
+- Stub IProxy/ClientProxy/ServerProxy; modern ``@Mod`` + IEventBus; ServerPlayer/MobEffect fixes
 
 ### Downloads
 

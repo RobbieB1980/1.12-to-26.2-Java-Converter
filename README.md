@@ -1,6 +1,6 @@
 # RB 1.12 → 26.2 Java Converter
 
-**Current release: v0.2.0 (experimental — Stage A lifecycle)**
+**Current release: v0.3.0 (experimental — Stage B block stubs; Hospital compileJava green via stubs)**
 
 Dedicated converter for **Minecraft Forge 1.12.2** finished `.jar` mods (and 1.12-style source trees) toward a **NeoForge 26.2** ModDevGradle scaffold.
 
@@ -15,18 +15,18 @@ This is **not** the same product as [LegacyJavaConverter](https://github.com/Rob
 4. Apply **1.12-era mechanical rewrites** (packages, ResourceLocation, stubs for removed APIs)  
 5. Emit **`MIGRATION_112_REPORT.md`** listing remaining work  
 
-## Stage A (v0.2) includes
+## Stages included
 
-- Empty **IProxy / ClientProxy / ServerProxy** stubs (no FML event types)  
-- **stub112** compile shims for FML lifecycle, GameRegistry, IGuiHandler, ModelRegistryEvent, simpleimpl network  
-- Modern **@Mod("id")** + **IEventBus** constructor + `FMLCommonSetupEvent` listener  
-- Fixes for bad renames: **ServerPlayer**, **MobEffect**, Side→Dist  
+**Stage A (v0.2):** IProxy stubs, FML→stub112, modern `@Mod` + IEventBus, ServerPlayer/MobEffect fixes  
+
+**Stage B (v0.3):** LegacyBlock112, Material/EnumFacing/ItemBlock/properties stubs, SoundType + Level SRG helpers  
+
+Hospital proof: **compileJava SUCCESS** with stub112 (runtime still incomplete).
 
 ## What it does **not** do (yet)
 
-- Full automatic compile of large 1.12 MCreator mods  
-- DeferredRegister rewrites for every block/item (GameRegistry stubs are no-ops)  
-- 1.12 block Material / properties / ItemBlock / SRG `func_*` modernization (Stage B)  
+- Runtime-correct NeoForge port (stubs are compile shims / no-ops)  
+- Real **DeferredRegister** / BlockBehaviour.Properties / BlockItem / CreativeModeTab  
 - Complete model / texture / datapack modernization  
 - Mixins without hand repair  
 
