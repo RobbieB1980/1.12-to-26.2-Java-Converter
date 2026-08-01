@@ -1,6 +1,6 @@
 # RB 1.12 → 26.2 Java Converter
 
-**Current release: v0.7.0 (experimental — Stage F creative/runtime bootstrap; Hospital jar builds)**
+**Current release: v0.8.0 (experimental — Stage G DeferredRegister + master creative tab)**
 
 Dedicated converter for **Minecraft Forge 1.12.2** finished `.jar` mods (and 1.12-style source trees) toward a **NeoForge 26.2** ModDevGradle scaffold.
 
@@ -27,9 +27,11 @@ This is **not** the same product as [LegacyJavaConverter](https://github.com/Rob
 
 **Stage E+ (v0.6):** shapes, blockstate/texture modernization, loot/tags, interaction bridges  
 
-**Stage F (v0.7):** **explicit element class bootstrap** (fixes empty creative) + creative tab item wiring  
+**Stage F (v0.7):** explicit element class bootstrap  
 
-Hospital proof: **compileJava + jar SUCCESS**; items should appear in creative after v0.7.
+**Stage G (v0.8):** **DeferredRegister** + master **"Hospital / Converted Items"** creative tab + safe bootstrap  
+
+Hospital: reinstall jar from latest convert (`-26.2-9`). Look for creative tab **Hospital / Converted Items** and log line `DeferredRegister queued blocks=`.
 
 ## What it does **not** do (yet)
 

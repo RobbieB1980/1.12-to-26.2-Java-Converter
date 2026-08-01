@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0 — 2026-08-01
+
+### Stage G — DeferredRegister + master creative tab (still-empty creative)
+
+If v0.7 still showed no items, Stage G hardens registration further:
+
+- **DeferredRegister** for blocks/items/tabs (queue entries, then `register(bus)`)
+- Per-element **try/catch** bootstrap (`Class.forName` + `initElements`) so one failure cannot wipe all
+- Guaranteed creative tab **`the_hospital_mod:all`** titled **"Hospital / Converted Items"**
+- Vanilla tab fallbacks (Building / Functional / Ingredients / Tools)
+- SLF4J logs: `DeferredRegister queued blocks=N items=N`
+
+### Install
+
+Use jar from reconvert output `-26.2-9` (not older builds).
+
 ## 0.7.0 — 2026-08-01
 
 ### Stage F — runtime creative inventory fix

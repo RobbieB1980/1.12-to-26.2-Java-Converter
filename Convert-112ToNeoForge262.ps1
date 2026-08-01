@@ -2210,6 +2210,285 @@ function Invoke-112StageEPlusPass {
     return $touched
 }
 
+function Invoke-112StageGDeferredCreativePass {
+    param([string]$Root)
+    $javaRoot = Join-Path $Root 'src\main\java'
+    if (-not (Test-Path $javaRoot)) { return 0 }
+    $touched = 0
+    $nl = [Environment]::NewLine
+    $files = Get-ChildItem $javaRoot -Recurse -Filter '*.java' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch '[\\/]rb[\\/]converter[\\/]stub112[\\/]' }
+
+    foreach ($f in $files) {
+        $t = [System.IO.File]::ReadAllText($f.FullName)
+        $o = $t
+        $name = $f.Name
+
+        # Harden Elements.preInit: per-class and per-initElements try/catch + classloader
+        if ($name -match '^Elements\w+\.java$') {
+            $elClass = [IO.Path]::GetFileNameWithoutExtension($name)
+            if ($t -match 'GENERATED_ELEMENT_CLASS_NAMES') {
+                $t = [regex]::Replace($t, '(?s)public\s+void\s+preInit\s*\(\s*\)\s*\{.*?(\r?\n\s*this\.addNetworkMessage)', {
+                    param($m)
+                    $tail = $m.Groups[1].Value
+                    @"
+public void preInit() {
+      int loaded = 0;
+      ClassLoader cl = $elClass.class.getClassLoader();
+      for (String className : GENERATED_ELEMENT_CLASS_NAMES) {
+         if (className == null || className.isEmpty()) continue;
+         try {
+            Class<?> clazz = Class.forName(className, true, cl);
+            if ($elClass.ModElement.class.isAssignableFrom(clazz)
+                  && clazz != $elClass.ModElement.class
+                  && clazz.getName().indexOf(36) < 0) { // skip inner classes ('$')
+               try {
+                  this.elements.add(($elClass.ModElement)clazz.getConstructor($elClass.class).newInstance(this));
+                  loaded++;
+               } catch (NoSuchMethodException nsme) {
+                  System.err.println("[112to262] skip (no ctor): " + className);
+               }
+            }
+         } catch (Throwable t) {
+            System.err.println("[112to262] skip element " + className + ": " + t);
+         }
+      }
+      System.out.println("[112to262] bootstrap loaded=" + loaded + " elementObjects=" + this.elements.size());
+      try {
+         Collections.sort(this.elements);
+      } catch (Throwable t) {
+         System.err.println("[112to262] sort failed: " + t);
+      }
+      for ($elClass.ModElement el : new ArrayList<>(this.elements)) {
+         try {
+            el.initElements();
+         } catch (Throwable t) {
+            System.err.println("[112to262] initElements failed for " + el.getClass().getName() + ": " + t);
+            t.printStackTrace();
+         }
+      }
+      System.out.println("[112to262] elements=" + this.elements.size()
+            + " blocks=" + this.blocks.size()
+            + " items=" + this.items.size()
+            + " tabs=" + rb.converter.stub112.CreativeTabs.allTabs().size());
+$tail
+"@
+                }, 1)
+            }
+        }
+
+        # Rewrite @Mod class registration to DeferredRegister + master tab
+        if ($t -match '@Mod\s*\(' -and $t -match 'public\s+static\s+final\s+String\s+MODID') {
+            # Ensure imports
+            foreach ($imp in @(
+                'import net.neoforged.neoforge.registries.DeferredRegister;',
+                'import net.neoforged.neoforge.registries.DeferredHolder;',
+                'import net.minecraft.core.registries.Registries;',
+                'import net.minecraft.network.chat.Component;',
+                'import net.minecraft.world.item.CreativeModeTab;',
+                'import net.minecraft.world.item.CreativeModeTabs;',
+                'import net.minecraft.world.item.Item;',
+                'import net.minecraft.world.item.ItemStack;',
+                'import net.minecraft.world.level.block.Block;',
+                'import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;',
+                'import net.neoforged.bus.api.IEventBus;',
+                'import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;',
+                'import org.slf4j.Logger;',
+                'import com.mojang.logging.LogUtils;'
+            )) {
+                if ($t -notmatch [regex]::Escape($imp)) {
+                    $t = $t -replace '(?m)^(package\s+[^;]+;\s*)', ('$1' + $nl + $imp + $nl)
+                }
+            }
+
+            # Inject DeferredRegister fields if missing
+            if ($t -notmatch 'DeferredRegister\.Blocks\s+BLOCKS') {
+                $t = $t -replace '(public\s+static\s+final\s+String\s+MODID\s*=\s*"[^"]+"\s*;)',
+                    ('$1' + $nl +
+                     '   private static final Logger LOGGER = LogUtils.getLogger();' + $nl +
+                     '   public static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(MODID);' + $nl +
+                     '   public static final DeferredRegister.Items ITEMS = DeferredRegister.createItems(MODID);' + $nl +
+                     '   public static final DeferredRegister<CreativeModeTab> CREATIVE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);' + $nl)
+            }
+
+            # Replace constructor body with DeferredRegister wiring
+            if ($t -match 'public\s+(\w+)\s*\(\s*IEventBus\s+modEventBus\s*\)') {
+                $className = $Matches[1]
+                $newCtor = @"
+public $className(IEventBus modEventBus) {
+        instance = this;
+        modEventBus.addListener(this::commonSetup);
+        modEventBus.addListener(this::addCreative);
+
+        if (this.elements != null) {
+            try {
+                this.elements.preInit();
+            } catch (Throwable t) {
+                LOGGER.error("[112to262] preInit failed", t);
+            }
+        }
+
+        // Stage G: queue DeferredRegister entries BEFORE bus registration
+        java.util.HashSet<String> usedBlock = new java.util.HashSet<>();
+        java.util.HashSet<String> usedItem = new java.util.HashSet<>();
+        int bCount = 0, iCount = 0;
+        if (this.elements != null) {
+            for (java.util.function.Supplier<Block> s : this.elements.getBlocks()) {
+                try {
+                    final Block b = s.get();
+                    if (b == null) continue;
+                    String path = rb.converter.stub112.LegacyBlocks.resolveBlockPath(b);
+                    if (path == null || path.isEmpty()) path = "block_" + (bCount);
+                    path = path.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_/.-]", "");
+                    if (path.isEmpty()) path = "block_" + bCount;
+                    String base = path; int n = 2;
+                    while (!usedBlock.add(path)) { path = base + "_" + (n++); }
+                    final String reg = path;
+                    BLOCKS.register(reg, () -> b);
+                    bCount++;
+                } catch (Throwable t) {
+                    LOGGER.error("[112to262] block register skip", t);
+                }
+            }
+            for (java.util.function.Supplier<Item> s : this.elements.getItems()) {
+                try {
+                    final Item it = s.get();
+                    if (it == null) continue;
+                    String path = rb.converter.stub112.LegacyBlocks.resolveItemPath(it);
+                    if (path == null || path.isEmpty()) path = "item_" + (iCount);
+                    path = path.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_/.-]", "");
+                    if (path.isEmpty()) path = "item_" + iCount;
+                    String base = path; int n = 2;
+                    while (!usedItem.add(path)) { path = base + "_" + (n++); }
+                    final String reg = path;
+                    ITEMS.register(reg, () -> it);
+                    iCount++;
+                } catch (Throwable t) {
+                    LOGGER.error("[112to262] item register skip", t);
+                }
+            }
+        }
+        LOGGER.info("[112to262] DeferredRegister queued blocks={} items={}", bCount, iCount);
+
+        // Master creative tab — always visible if any items exist
+        final int itemsSnapshot = iCount;
+        CREATIVE_TABS.register("all", () -> CreativeModeTab.builder()
+                .title(Component.literal("Hospital / Converted Items"))
+                .icon(() -> {
+                    if (elements != null) {
+                        for (java.util.function.Supplier<Item> s : elements.getItems()) {
+                            Item it = s.get();
+                            if (it != null && it != net.minecraft.world.item.Items.AIR) {
+                                return new ItemStack(it);
+                            }
+                        }
+                    }
+                    return ItemStack.EMPTY;
+                })
+                .displayItems((params, out) -> {
+                    if (elements == null) return;
+                    for (java.util.function.Supplier<Item> s : elements.getItems()) {
+                        Item it = s.get();
+                        if (it != null && it != net.minecraft.world.item.Items.AIR) {
+                            out.accept(it);
+                        }
+                    }
+                })
+                .build());
+
+        // Also keep per-MCreator tabs when they have items
+        int tabIdx = 0;
+        java.util.HashSet<String> usedTabs = new java.util.HashSet<>();
+        usedTabs.add("all");
+        for (rb.converter.stub112.CreativeTabs tab : rb.converter.stub112.CreativeTabs.allTabs()) {
+            final rb.converter.stub112.CreativeTabs tabRef = tab;
+            String tabPath = tabRef.registryPath();
+            if (tabPath == null || tabPath.isEmpty()) tabPath = "tab_" + (tabIdx++);
+            String baseTab = tabPath; int tn = 2;
+            while (!usedTabs.add(tabPath)) { tabPath = baseTab + "_" + (tn++); }
+            final String regTab = tabPath;
+            try {
+                CREATIVE_TABS.register(regTab, () -> CreativeModeTab.builder()
+                        .title(Component.literal(tabRef.getTabLabel()))
+                        .icon(tabRef::createIcon)
+                        .displayItems((params, out) -> {
+                            for (Item it : tabRef.getItems()) {
+                                if (it != null && it != net.minecraft.world.item.Items.AIR) out.accept(it);
+                            }
+                            if (tabRef.getItems().isEmpty()) {
+                                for (Block b : tabRef.getBlocks()) {
+                                    Item it = b.asItem();
+                                    if (it != null && it != net.minecraft.world.item.Items.AIR) out.accept(it);
+                                }
+                            }
+                        })
+                        .build());
+            } catch (Throwable t) {
+                LOGGER.error("[112to262] tab register failed " + regTab, t);
+            }
+        }
+
+        // Subscribe DeferredRegisters last (entries already queued)
+        BLOCKS.register(modEventBus);
+        ITEMS.register(modEventBus);
+        CREATIVE_TABS.register(modEventBus);
+        LOGGER.info("[112to262] creative tabs queued (master all + mcreator tabs), itemSuppliers={}", itemsSnapshot);
+    }
+"@
+                $t = [regex]::Replace($t,
+                    '(?s)public\s+' + [regex]::Escape($className) + '\s*\(\s*IEventBus\s+modEventBus\s*\)\s*\{.*?\n    \}',
+                    $newCtor.TrimEnd())
+            }
+
+            # Replace addCreative with broad vanilla fallbacks
+            $t = [regex]::Replace($t, '(?s)private void addCreative\(final BuildCreativeModeTabContentsEvent event\)\s*\{.*?\n    \}', @'
+private void addCreative(final BuildCreativeModeTabContentsEvent event) {
+        if (this.elements == null) return;
+        // Stage G: mirror all items into several vanilla tabs so something is always findable
+        if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS
+                || event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS
+                || event.getTabKey() == CreativeModeTabs.INGREDIENTS
+                || event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
+            for (java.util.function.Supplier<Item> s : this.elements.getItems()) {
+                try {
+                    Item i = s.get();
+                    if (i != null && i != net.minecraft.world.item.Items.AIR) event.accept(i);
+                } catch (Throwable ignored) { }
+            }
+        }
+    }
+'@)
+
+            # commonSetup log via LOGGER
+            if ($t -match 'private void commonSetup' -and $t -notmatch 'DeferredRegister ready') {
+                $t = $t -replace '(private void commonSetup\(final FMLCommonSetupEvent event\)\s*\{\s*)',
+                    ('$1' + $nl + '        LOGGER.info("[112to262] DeferredRegister ready mod={} elements={} blocks={} items={} tabs={}", MODID,' +
+                     ' elements==null?-1:elements.getElements().size(),' +
+                     ' elements==null?-1:elements.getBlocks().size(),' +
+                     ' elements==null?-1:elements.getItems().size(),' +
+                     ' rb.converter.stub112.CreativeTabs.allTabs().size());' + $nl)
+            }
+
+            # Disable old RegisterEvent path if still present (DeferredRegister replaces it)
+            if ($t -match 'onRegisterBlocksItems') {
+                $t = $t -replace 'modEventBus\.addListener\(this::onRegisterBlocksItems\);',
+                    '/* Stage G: RegisterEvent path replaced by DeferredRegister */'
+            }
+
+            if ($t -notmatch 'TODO_112_STAGE_G') {
+                $t = $t -replace '(?m)^(package\s+[^;]+;\s*)',
+                    ('$1' + $nl + '// TODO_112_STAGE_G: DeferredRegister + master creative tab for visible items.' + $nl)
+            }
+        }
+
+        if ($t -ne $o) {
+            [System.IO.File]::WriteAllText($f.FullName, $t)
+            $touched++
+        }
+    }
+    return $touched
+}
+
 function Invoke-112StageFRuntimeFixPass {
     param([string]$Root)
     $javaRoot = Join-Path $Root 'src\main\java'
@@ -2914,6 +3193,10 @@ Write-Step 'Stage F: explicit element bootstrap + creative inventory fix'
 $f = Invoke-112StageFRuntimeFixPass -Root $OutputPath
 Write-Ok "Stage F touched $f file(s)"
 
+Write-Step 'Stage G: DeferredRegister + master creative tab (empty-menu fix)'
+$g = Invoke-112StageGDeferredCreativePass -Root $OutputPath
+Write-Ok "Stage G touched $g file(s)"
+
 Write-Step 'Gradle wrapper'
 Install-WrapperIfPossible -Root $OutputPath
 
@@ -2926,30 +3209,26 @@ $report = @"
 - Output: $OutputPath
 - Target: Minecraft $MinecraftVersion / NeoForge $NeoVersion
 - Detected MC hint: $($meta.mc_hint)
-- Converter stage: **F (v0.7)** - explicit element bootstrap + creative inventory
+- Converter stage: **G (v0.8)** - DeferredRegister + master creative tab
 - Generated: $gen
 
 ## Automated
 
-### Stage A–E
-1. Scaffold → registration → Properties/facing → resources/loot
+### Stage A–F
+1. Scaffold → stubs → discovery list → resources
 
-### Stage F (runtime creative fix)
-2. **Generated element class list** (``GENERATED_ELEMENT_CLASS_NAMES``) — reliable under ModLauncher
-3. Creative tabs accept **remembered Items** (not only ``block.asItem()``)
-4. Fallback: dump all items into **BUILDING_BLOCKS** + **INGREDIENTS**
-5. Startup logging of element/block/item/tab counts
-
-## You must still fix manually
-
-- Facing-dependent multi-AABB shapes, GUIs/BE/packets, recipes
-- Full playtest polish on NeoForge 26.2
+### Stage G (creative still empty fix)
+2. Switch block/item/tab registration to **DeferredRegister**
+3. Per-element try/catch bootstrap (one bad class cannot wipe all)
+4. Register a guaranteed **``$($meta.mod_id)_all``** creative tab with every item
+5. Keep vanilla tab fallbacks + ``[112to262]`` logs
 
 ## Next
 
 cd "$OutputPath"
 .\gradlew.bat jar
-# install build/libs/*.jar into NeoForge 26.2 mods folder
+# Put build/libs/*.jar in NeoForge 26.2 mods/
+# Check latest.log for: [112to262] elements= N blocks= N items= N
 "@
 [System.IO.File]::WriteAllText($reportPath, $report)
 Write-Ok "Wrote $reportPath"
