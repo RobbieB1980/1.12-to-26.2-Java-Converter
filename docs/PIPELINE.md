@@ -31,8 +31,10 @@
 - **Stage B:** LegacyBlock112, Material/EnumFacing/ItemBlock/properties, Level SRG helpers
 - **Stage C:** ElementDiscovery, single-instance BlockItem, real `RegisterEvent`, lang JSON
 - **Stage D:** LegacyProps Properties, horizontal FACING, cutout render_type, CreativeModeTabs
-- **Stage E+:** AABB→shapes, blockstate/texture modernization, loot/tags, use/neighbor/redstone bridges
+- **Stage E+:** AABB→shapes, blockstate/texture modernization, loot/tags, use/neighbor/redstone bridges; **`items/*.json`** client item models (26.x icons); `pack.mcmeta` min/max format 107
 - **Stage F:** explicit `GENERATED_ELEMENT_CLASS_NAMES` bootstrap + creative inventory fallbacks
+- **Stage G:** DeferredRegister wiring attempts
+- **Stage H:** explicit `GeneratedRegistries` (every BlockCustom + BlockItem); MC 26.2 `Properties.setId` via `LegacyProps.ensureId`
 - Map FML lifecycle / GameRegistry leftovers to stubs where still needed
 - Write `MIGRATION_112_REPORT.md`
 

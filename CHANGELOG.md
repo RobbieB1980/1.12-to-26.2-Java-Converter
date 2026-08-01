@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.9.2 — 2026-08-01
+
+### Item icons purple/black (missing texture)
+
+**Symptom:** Creative tab present; every item is purple/black.
+
+**Cause (MC 1.21.4+ / 26.x):** Item icons require ``assets/<modid>/items/<id>.json`` client definitions. Legacy ``models/item/*.json`` alone is not enough. Also ``pack.mcmeta`` should use ``min_format``/``max_format`` (not only ``pack_format``).
+
+**Fix (Stage E+):**
+- Generate ``items/<id>.json`` pointing at ``modid:item/<id>`` (or block model fallback)
+- Normalize ``pack.mcmeta`` to format 107 min/max
+
+Hospital: rebuild jar from **`-26.2-10`** after asset gen.
+
+## 0.9.1 — 2026-08-01
+
+### Stage H hotfix — MC 26.2 ``Block id not set`` bootstrap crash
+
+**Symptom (Hospital `-26.2-10`):** Bootstrap ``ModLoadingException`` on ``RegisterEvent``:
+- ``NullPointerException: Block id not set``
+- ``Trying to access unbound value: ResourceKey[minecraft:block / the_hospital_mod:...]``
+
+**Cause:** In 26.2, ``BlockBehaviour`` construction requires ``BlockBehaviour.Properties.setId(...)`` (loot table + description id). Stage H used ``new BlockCustom()`` inside a plain ``BLOCKS.register`` supplier **without** ``setId``, so block factories threw; DeferredHolders stayed unbound; BlockItems then NPE'd.
+
+**Fix:**
+- ``LegacyProps.ensureId`` + ThreadLocal ``pushPendingBlockId`` / ``clearPendingBlockId``
+- ``LegacyBlock112`` always calls ``ensureId`` before ``super``
+- Stage H factory: ``BLOCKS.register(id, key -> { pushPendingBlockId(key); new BlockCustom(); ... })``
+- ``ITEMS.registerSimpleBlockItem(id, block)`` (name + DeferredBlock)
+
+### Hospital install
+
+Rebuild from **`-26.2-10`** (patched in place) or reconvert with converter **v0.9.1**:
+
+```
+...-26.2-10\build\libs\the_hospital_mod-1.0.0+from112-mc26.2-neoforge.jar
+```
+
+Expect: game loads; log ``GeneratedRegistries.bootstrap start, explicitBlocks=131``; creative tab **Hospital / Converted Items**.
+
 ## 0.9.0 — 2026-08-01
 
 ### Stage H — explicit GeneratedRegistries (hard fix for empty creative)

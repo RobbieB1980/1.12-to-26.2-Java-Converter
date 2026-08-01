@@ -301,8 +301,9 @@ side="BOTH"
     $packJson = @"
 {
   "pack": {
-    "description": "$($Meta.mod_name) resources",
-    "pack_format": 107
+    "min_format": 107,
+    "max_format": 107,
+    "description": "$($Meta.mod_name) resources"
   }
 }
 "@
@@ -1103,13 +1104,53 @@ public final class LegacyBlocks {
         'LegacyProps.java' = @'
 package rb.converter.stub112;
 
+import java.util.concurrent.atomic.AtomicInteger;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
 
-/** Stage D: fold 1.12 Material + hardness/light/sound into BlockBehaviour.Properties. */
+/**
+ * Stage D/H: fold 1.12 Material + hardness/light/sound into BlockBehaviour.Properties.
+ * MC 26.2 requires Properties.setId before BlockBehaviour construction (loot/description).
+ */
 public final class LegacyProps {
+    private static final ThreadLocal<ResourceKey<Block>> PENDING_BLOCK_ID = new ThreadLocal<>();
+    private static final AtomicInteger FALLBACK_SEQ = new AtomicInteger();
+
     private LegacyProps() {}
+
+    /** Stage H: set while DeferredRegister factory constructs BlockCustom so setId matches registry name. */
+    public static void pushPendingBlockId(Identifier id) {
+        PENDING_BLOCK_ID.set(ResourceKey.create(Registries.BLOCK, id));
+    }
+
+    public static void pushPendingBlockId(ResourceKey<Block> key) {
+        PENDING_BLOCK_ID.set(key);
+    }
+
+    public static void clearPendingBlockId() {
+        PENDING_BLOCK_ID.remove();
+    }
+
+    /**
+     * MC 26.2 BlockBehaviour ctor calls effectiveDrops/effectiveDescriptionId which require Properties.id.
+     * Prefer the pending registry key from Stage H; otherwise a throwaway key (initElements / early construct).
+     */
+    public static BlockBehaviour.Properties ensureId(BlockBehaviour.Properties properties) {
+        if (properties == null) {
+            properties = BlockBehaviour.Properties.of();
+        }
+        ResourceKey<Block> key = PENDING_BLOCK_ID.get();
+        if (key == null) {
+            key = ResourceKey.create(Registries.BLOCK,
+                    Identifier.fromNamespaceAndPath("rb_converter", "pending_" + FALLBACK_SEQ.incrementAndGet()));
+        }
+        return properties.setId(key);
+    }
 
     public static BlockBehaviour.Properties of(Material material, SoundType sound,
                                                float hardness, float resistance,
@@ -1231,11 +1272,12 @@ public class LegacyBlock112 extends Block {
     private VoxelShape legacyShape = null;
 
     public LegacyBlock112(Material material) {
-        super(LegacyProps.fromMaterial(material));
+        super(LegacyProps.ensureId(LegacyProps.fromMaterial(material)));
     }
 
     public LegacyBlock112(BlockBehaviour.Properties properties) {
-        super(properties);
+        // MC 26.2: BlockBehaviour requires Properties.setId (loot table + description id)
+        super(LegacyProps.ensureId(properties));
     }
 
     public LegacyBlock112 setRegistryName(String name) {
@@ -2119,6 +2161,64 @@ function Invoke-112StageEPlusPass {
                     [void]$blockNames.Add([IO.Path]::GetFileNameWithoutExtension($_.Name))
                 }
             }
+
+            # MC 1.21.4+ / 26.x: assets/<modid>/items/<id>.json is required for item icons
+            # (models/item alone is not enough — without items/* everything is purple/black).
+            $itemsDefDir = Join-Path $modDir.FullName 'items'
+            New-Item -ItemType Directory -Force -Path $itemsDefDir | Out-Null
+            $modelsItemDir = Join-Path $modDir.FullName 'models\item'
+            $itemIds = New-Object 'System.Collections.Generic.HashSet[string]'
+            if (Test-Path $modelsItemDir) {
+                Get-ChildItem $modelsItemDir -Filter '*.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
+                    [void]$itemIds.Add([IO.Path]::GetFileNameWithoutExtension($_.Name))
+                }
+            }
+            if (Test-Path $bsDir) {
+                Get-ChildItem $bsDir -Filter '*.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
+                    [void]$itemIds.Add([IO.Path]::GetFileNameWithoutExtension($_.Name))
+                }
+            }
+            foreach ($iid in ($itemIds | Sort-Object)) {
+                if (-not $iid) { continue }
+                $out = Join-Path $itemsDefDir ($iid + '.json')
+                if (Test-Path $out) { continue }
+                $modelPath = if ((Test-Path $modelsItemDir) -and (Test-Path (Join-Path $modelsItemDir ($iid + '.json')))) {
+                    "$modid`:item/$iid"
+                } else {
+                    "$modid`:block/$iid"
+                }
+                $itemDef = @"
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "$modelPath"
+  }
+}
+"@
+                [System.IO.File]::WriteAllText($out, $itemDef.Trim() + $nl)
+                $touched++
+            }
+        }
+    }
+
+    # pack.mcmeta: 26.2 uses min_format/max_format (legacy pack_format alone can fail resource parse)
+    $packMeta = Join-Path $Root 'src\main\resources\pack.mcmeta'
+    if (Test-Path $packMeta) {
+        $pm = [System.IO.File]::ReadAllText($packMeta)
+        if ($pm -match '"pack_format"' -and $pm -notmatch '"min_format"') {
+            $desc = 'Converted resources'
+            if ($pm -match '"description"\s*:\s*"([^"]*)"') { $desc = $Matches[1] }
+            $newPm = @"
+{
+  "pack": {
+    "min_format": 107,
+    "max_format": 107,
+    "description": "$desc"
+  }
+}
+"@
+            [System.IO.File]::WriteAllText($packMeta, $newPm.Trim() + $nl)
+            $touched++
         }
     }
 
@@ -2259,12 +2359,19 @@ function Invoke-112StageHExplicitRegistryPass {
         $regLines.Add(@"
         {
             final String id = "$($p.Id)";
-            var block = BLOCKS.register(id, () -> {
-                var b = new $($p.Outer).BlockCustom();
-                try { $($p.Outer).block = b; } catch (Throwable ignored) {}
-                return b;
+            // MC 26.2: push registry Identifier so LegacyBlock112 can Properties.setId before super()
+            var block = BLOCKS.register(id, key -> {
+                rb.converter.stub112.LegacyProps.pushPendingBlockId(key);
+                try {
+                    var b = new $($p.Outer).BlockCustom();
+                    try { $($p.Outer).block = b; } catch (Throwable ignored) {}
+                    return b;
+                } finally {
+                    rb.converter.stub112.LegacyProps.clearPendingBlockId();
+                }
             });
-            ITEMS.registerSimpleBlockItem(block);
+            // Name + DeferredBlock form (do not resolve unbound holder during item registration)
+            ITEMS.registerSimpleBlockItem(id, block);
         }
 "@) | Out-Null
     }

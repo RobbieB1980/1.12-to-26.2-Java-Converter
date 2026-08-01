@@ -1,6 +1,6 @@
 # RB 1.12 → 26.2 Java Converter
 
-**Current release: v0.9.0 (experimental — Stage H explicit GeneratedRegistries; creative hard-fix)**
+**Current release: v0.9.2 (experimental — Stage H + setId + items/*.json icons)**
 
 Dedicated converter for **Minecraft Forge 1.12.2** finished `.jar` mods (and 1.12-style source trees) toward a **NeoForge 26.2** ModDevGradle scaffold.
 
@@ -25,15 +25,16 @@ This is **not** the same product as [LegacyJavaConverter](https://github.com/Rob
 
 **Stage D (v0.5):** **LegacyProps**, **horizontal FACING**, cutout models, **CreativeModeTab**  
 
-**Stage E+ (v0.6):** shapes, blockstate/texture modernization, loot/tags, interaction bridges  
+**Stage E+ (v0.6 / v0.9.2):** shapes, blockstate/texture modernization, loot/tags, interaction bridges; **`items/*.json`** client item models for 26.x icons  
 
 **Stage F (v0.7):** explicit element class bootstrap  
 
 **Stage G (v0.8):** DeferredRegister wiring attempts  
 
-**Stage H (v0.9):** **`GeneratedRegistries.java`** — every block/item listed explicitly (no reflection)  
+**Stage H (v0.9 / v0.9.1):** **`GeneratedRegistries.java`** — every block/item listed explicitly (no reflection)  
+- **v0.9.1:** MC 26.2 requires `Properties.setId` before `Block` construction — fixed via `LegacyProps.ensureId` + pending registry key during DeferredRegister factories.
 
-Hospital: install jar from **`-26.2-10`**. Creative tab **Hospital / Converted Items**. Log: `GeneratedRegistries.bootstrap start, explicitBlocks=131`.
+Hospital: install rebuilt jar from **`-26.2-10`**. Creative tab **Hospital / Converted Items**. Log: `GeneratedRegistries.bootstrap start, explicitBlocks=131`.
 
 ## What it does **not** do (yet)
 

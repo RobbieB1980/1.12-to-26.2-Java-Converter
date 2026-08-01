@@ -3,13 +3,13 @@
   Create/update a GitHub Release and upload portable + setup artifacts from dist/.
 
 .EXAMPLE
-  .\scripts\Publish-GitHubRelease.ps1 -Tag v0.9.0
+  .\scripts\Publish-GitHubRelease.ps1 -Tag v0.9.2
 #>
 [CmdletBinding()]
 param(
-    [string]$Tag = 'v0.9.0',
+    [string]$Tag = 'v0.9.2',
     [string]$Repo = 'RobbieB1980/1.12-to-26.2-Java-Converter',
-    [string]$Name = 'RB 1.12 to 26.2 Java Converter 0.9.0'
+    [string]$Name = 'RB 1.12 to 26.2 Java Converter 0.9.2'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,10 +39,17 @@ $notes = @"
 
 Experimental converter: **Forge 1.12.2** jars/projects to **NeoForge 26.2** scaffolds.
 
-### Stage H (v0.9)
+### Hospital proof (v0.9.2) — loads + creative + textures
 
-- **Hard creative fix**: ``GeneratedRegistries`` lists every block/item explicitly (no reflection)
-- Tab **Hospital / Converted Items**; log ``GeneratedRegistries.bootstrap start, explicitBlocks=N``
+- Bootstrap no longer crashes on ``Block id not set``
+- Creative tab **Hospital / Converted Items** populated
+- Item icons no longer purple/black (``assets/<modid>/items/*.json``)
+
+### Stage H / E+ fixes in this release
+
+- **v0.9.1:** ``LegacyProps.ensureId`` + pending registry key during DeferredRegister factories (MC 26.2 ``Properties.setId``)
+- **v0.9.2:** generate ``items/<id>.json`` client item models; ``pack.mcmeta`` ``min_format``/``max_format`` 107
+- Explicit ``GeneratedRegistries`` (every BlockCustom + BlockItem, no reflection required for items)
 
 ### Stage G → A
 
@@ -63,8 +70,8 @@ Experimental converter: **Forge 1.12.2** jars/projects to **NeoForge 26.2** scaf
 
 ### Scope (honest)
 
-- Decompile + mcmod.info + Stage A lifecycle stubs + 26.2 Gradle scaffold
-- **Not** a full automatic port of large 1.12 MCreator mods (block APIs remain Stage B)
+- Decompile + mcmod.info + Stage A–H mechanical rewrites + 26.2 Gradle scaffold
+- Large MCreator mods still need hand polish (GUIs, BE, multi-box facing shapes)
 
 Separate from [LegacyJavaConverter](https://github.com/RobbieB1980/LegacyJavaConverter) (1.20.1 / 1.21.x).
 "@
